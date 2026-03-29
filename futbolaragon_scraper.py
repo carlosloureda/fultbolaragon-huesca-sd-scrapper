@@ -291,64 +291,127 @@ class FutbolAragonScraper:
         return sorted(stats_list, key=lambda x: (-x['minutes_played'], x['name']))
 
 class ExcelExporter:
-    def __init__(self, filename="futbolaragon_data.xlsx"):
+    def __init__(self, filename="futbolaragon_data.xlsx", target_team="HUESCA-S.D.", target_player=None):
         self.filename = filename
-        self.wb = Workbook()
+        self.target_team = target_team
+        self.target_player = target_player
+        self.matches_data = []
+        self.players_data = []
+        import pandas as pd
+        self.pd = pd
         
-        # Setup sheets
-        self.ws_matches = self.wb.active
-        self.ws_matches.title = "Detalle Partidos"
-        self.ws_players = self.wb.create_sheet(title="Resumen Jugadores")
-        
-        self._setup_headers()
-        
-    def _setup_headers(self):
-        # Match Details Headers
-        matches_headers = ["Jornada/Fecha", "División", "Local", "Visitante"]
-        self.ws_matches.append(matches_headers)
-        self._style_header(self.ws_matches)
-        
-        # Player Summary Headers
-        players_headers = ["Partido", "Jugador", "Dorsal", "Titular", "Min. Entrada", "Min. Salida", "Minutos Jugados"]
-        self.ws_players.append(players_headers)
-        self._style_header(self.ws_players)
-        
-    def _style_header(self, ws):
-        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-        header_font = Font(color="FFFFFF", bold=True)
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal="center")
-            
     def append_match_data(self, match_data):
         info = match_data['match_info']
         match_title = f"{info.get('home_team')} vs {info.get('away_team')}"
+        home = info.get('home_team', '')
+        away = info.get('away_team', '')
+        
+        condicion = "Local" if self.target_team.lower() in home.lower() else "Visitante"
+        rival = away if condicion == "Local" else home
         
         # Append match info
-        self.ws_matches.append([
-            info.get('subtitle', ''),
-            info.get('division', ''),
-            info.get('home_team', ''),
-            info.get('away_team', '')
-        ])
+        self.matches_data.append({
+            "Jornada/Fecha": info.get('subtitle', ''),
+            "División": info.get('division', ''),
+            "Partido": match_title,
+            "Equipo": self.target_team,
+            "Rival": rival,
+            "Condición": condicion
+        })
         
         # Append players
         for p in match_data.get('player_stats', []):
             titular = "Sí" if p['is_starter'] else "No"
-            self.ws_players.append([
-                match_title,
-                p['name'],
-                p['number'],
-                titular,
-                p['entry_minute'] if p['entry_minute'] is not None else "-",
-                p['exit_minute'] if p['exit_minute'] is not None else "-",
-                p['minutes_played']
-            ])
+            min_played = p['minutes_played']
+            min_in = p['entry_minute'] if p['entry_minute'] is not None else 0
+            min_out = p['exit_minute'] if p['exit_minute'] is not None else 0
+            
+            self.players_data.append({
+                "Partido": match_title,
+                "Rival": rival,
+                "Condición": condicion,
+                "Jugador": p['name'],
+                "Dorsal": p['number'],
+                "Titular": titular,
+                "Min. Entrada": min_in,
+                "Min. Salida": min_out,
+                "Minutos Jugados": min_played,
+                "Jugó": "Sí" if min_played > 0 else "No",
+                "Suplente Usado": "Sí" if titular == "No" and min_played > 0 else "No",
+                "Titularidad_num": 1 if p['is_starter'] else 0
+            })
             
     def save(self):
-        self.wb.save(self.filename)
-        print(f"[SUCCESS] Data exported to {self.filename}")
+        pd = self.pd
+        
+        df_matches = pd.DataFrame(self.matches_data)
+        df_players = pd.DataFrame(self.players_data)
+        
+        df_resumen = pd.DataFrame()
+        # Resumen Plantilla
+        if not df_players.empty:
+            resumen = df_players.groupby("Jugador").agg(
+                Partidos_Convocado=("Partido", "count"),
+                Titularidades=("Titularidad_num", "sum"),
+                Minutos_Totales=("Minutos Jugados", "sum"),
+            ).reset_index()
+            
+            suplencias_usado = df_players[df_players["Suplente Usado"] == "Sí"].groupby("Jugador").size().reset_index(name="Suplencias Usado")
+            partidos_jugados = df_players[df_players["Jugó"] == "Sí"].groupby("Jugador").size().reset_index(name="Partidos Jugados")
+            
+            resumen = resumen.merge(suplencias_usado, on="Jugador", how="left").fillna({"Suplencias Usado": 0})
+            resumen = resumen.merge(partidos_jugados, on="Jugador", how="left").fillna({"Partidos Jugados": 0})
+            
+            resumen["Suplencias Usado"] = resumen["Suplencias Usado"].astype(int)
+            resumen["Partidos Jugados"] = resumen["Partidos Jugados"].astype(int)
+            resumen["Titularidades"] = resumen["Titularidades"].astype(int)
+            
+            resumen["Media Min/PJ"] = (resumen["Minutos_Totales"] / resumen.replace({'Partidos Jugados': {0: pd.NA}})["Partidos Jugados"]).fillna(0).round(1)
+            resumen["% Titularidad"] = ((resumen["Titularidades"] / resumen.replace({'Partidos Jugados': {0: pd.NA}})["Partidos Jugados"]) * 100).fillna(0).round(1)
+            
+            # Sort by minutes played
+            resumen = resumen.sort_values("Minutos_Totales", ascending=False)
+            df_resumen = resumen
+            
+        # Target Player Sheet
+        df_target = pd.DataFrame()
+        if not df_players.empty and self.target_player:
+            player_matches = df_players[df_players["Jugador"].str.contains(self.target_player.split()[0], case=False, na=False)]
+            df_target = player_matches
+            
+        with pd.ExcelWriter(self.filename, engine='openpyxl') as writer:
+            if not df_matches.empty:
+                df_matches.to_excel(writer, sheet_name="Detalle Partidos", index=False)
+            if not df_players.empty:
+                df_players.to_excel(writer, sheet_name="Datos Jugadores", index=False)
+            if not df_resumen.empty:
+                df_resumen.to_excel(writer, sheet_name="Resumen Plantilla", index=False)
+            if not df_target.empty:
+                sheet_name = df_target.iloc[0]["Jugador"][:30] if not df_target.empty else "Jugador Objetivo"
+                df_target.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+        # Add Auto-Filters and Column width using openpyxl directly on the saved file
+        from openpyxl import load_workbook
+        wb = load_workbook(self.filename)
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter # Get the column name
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = (max_length + 2)
+                ws.column_dimensions[column].width = adjusted_width
+            
+            if ws.dimensions:
+                ws.auto_filter.ref = ws.dimensions
+        
+        wb.save(self.filename)
+        print(f"[SUCCESS] Advanced KPIs and Data exported to {self.filename}")
 
 def main():
     # Setup params
@@ -358,7 +421,7 @@ def main():
     # JORNADAS is discovered dynamically now
     
     scraper = FutbolAragonScraper(headless=False)
-    exporter = ExcelExporter(filename="futbolaragon_data.xlsx")
+    exporter = ExcelExporter(filename="futbolaragon_data.xlsx", target_team=TARGET_TEAM, target_player="LOUREDA")
     
     try:
         scraper.setup_browser()
