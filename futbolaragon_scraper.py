@@ -2,9 +2,12 @@ import os
 import re
 import time
 import json
+import time
+import random
 from datetime import datetime
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError
+from playwright_stealth import Stealth
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 
@@ -15,9 +18,16 @@ class FutbolAragonScraper:
         
     def setup_browser(self):
         self.playwright = sync_playwright().start()
-        self.browser = self.playwright.chromium.launch(headless=self.headless)
-        self.context = self.browser.new_context(locale="es-ES")
+        self.browser = self.playwright.chromium.launch(
+            headless=self.headless,
+            args=["--disable-blink-features=AutomationControlled"]
+        )
+        self.context = self.browser.new_context(
+            locale="es-ES",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
         self.page = self.context.new_page()
+        Stealth().apply_stealth_sync(self.page)
     
     def teardown_browser(self):
         if hasattr(self, 'browser'):
@@ -38,9 +48,36 @@ class FutbolAragonScraper:
         except Exception as e:
             print(f"[WARNING] Could not click cookie consent: {e}")
 
-    def extract_matches_from_competition(self, cod_competicion, cod_grupo, jornadas, cod_delegacion=1, cod_temporada=21):
+    def get_total_jornadas(self, cod_competicion, cod_grupo, cod_delegacion=1, cod_temporada=21):
+        url = f"{self.base_url}/pnfg/NPcd/NFG_CmpJornada?cod_primaria=1000120&CodCompeticion={cod_competicion}&CodGrupo={cod_grupo}&CodTemporada={cod_temporada}&CodJornada=1&Sch_Codigo_Delegacion={cod_delegacion}"
+        print("[INFO] Discovering total number of jornadas...")
+        try:
+            self.page.goto(url)
+            self.page.wait_for_selector("select#jornada", state="attached", timeout=10000)
+            html = self.page.content()
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            select_jornada = soup.find('select', id='jornada')
+            if not select_jornada:
+                return 0
+                
+            options = select_jornada.find_all('option')
+            # Extract highest option value that is a digit and not 0
+            jornadas = [int(opt['value']) for opt in options if opt.get('value') and opt['value'].isdigit() and opt['value'] != '0']
+            
+            if jornadas:
+                total = max(jornadas)
+                print(f"[SUCCESS] Discovered {total} jornadas in this competition.")
+                return total
+            return 0
+        except Exception as e:
+            print(f"[ERROR] Failed to discover jornadas: {e}")
+            self.page.screenshot(path="last_error.png")
+            return 0
+
+    def extract_matches_from_competition(self, cod_competicion, cod_grupo, jornadas, target_team, cod_delegacion=1, cod_temporada=21):
         """
-        Loops through jornadas and extracts match URLs for a given competition.
+        Loops through jornadas and extracts match URLs for a given competition, only for the target team.
         """
         match_urls = []
         for jornada in range(1, jornadas + 1):
@@ -53,21 +90,39 @@ class FutbolAragonScraper:
                 html = self.page.content()
                 soup = BeautifulSoup(html, 'html.parser')
                 
-                # Find the link to the acta
-                # Example: <a href="NFG_CmpPartido?cod_primaria=1000120&CodActa=866132" class="btn blue">Acta</a>
-                acta_links = soup.find_all('a', href=re.compile(r'NFG_CmpPartido.*CodActa='))
+                # Each match is usually in a table with width="100%"
+                match_tables = soup.find_all('table', width="100%")
+                
+                # Each match is usually in a table with width="100%"
+                match_tables = soup.find_all('table', width="100%")
                 
                 added = 0
-                for link in acta_links:
-                    href = link.get('href')
-                    if href:
-                        full_url = href if href.startswith('http') else f"{self.base_url}{href}"
-                        match_urls.append(full_url)
-                        added += 1
-                print(f"Found {added} matches.")
+                for table in match_tables:
+                    # Check if the target team plays in this match
+                    if target_team.lower() in table.get_text().lower():
+                        # Extract acta
+                        acta_link = table.find('a', href=re.compile(r'NFG_CmpPartido.*CodActa='))
+                        if acta_link:
+                            href = acta_link.get('href')
+                            if href:
+                                full_url = href if href.startswith('http') else f"{self.base_url}{href}"
+                                if full_url not in match_urls:
+                                    match_urls.append(full_url)
+                                    added += 1
+                                    
+                if added > 0:
+                    print(f"[{jornada}/{jornadas}] Fetching Jornada... Found {added} match(es) for {target_team}.")
+                else:
+                    print(f"[{jornada}/{jornadas}] Fetching Jornada... No match found.")
+                    
+                # Add random delay to avoid anti-scraping blocks
+                time.sleep(random.uniform(1.5, 3.5))
                 
             except Exception as e:
                 print(f"Error fetching jornada {jornada}: {e}")
+                self.page.screenshot(path="last_error.png")
+                # Even on error, wait to let the server recover
+                time.sleep(random.uniform(5.0, 10.0))
                 
         return list(set(match_urls))
         
@@ -174,9 +229,9 @@ class FutbolAragonScraper:
         # Calculate minutes
         target_stats = self._calculate_player_stats(data, target_team, match_length)
         if not target_stats:
-            # Maybe the team name varies slightly, let's try fuzzy match
+            # Try to find exactly matching team name (case insensitive)
             for t_name in data['teams'].keys():
-                if target_team.lower() in t_name.lower():
+                if target_team.lower() == t_name.lower() or t_name.lower().startswith(target_team.lower()):
                     target_stats = self._calculate_player_stats(data, t_name, match_length)
                     break
                     
@@ -300,25 +355,40 @@ def main():
     TARGET_TEAM = "HUESCA-S.D."
     COD_COMPETICION = "22320178"
     COD_GRUPO = "22401727"
-    JORNADAS = 2  # Set to a low number for testing, we can increase it later
+    # JORNADAS is discovered dynamically now
     
-    scraper = FutbolAragonScraper(headless=True)
+    scraper = FutbolAragonScraper(headless=False)
     exporter = ExcelExporter(filename="futbolaragon_data.xlsx")
     
     try:
         scraper.setup_browser()
         scraper.handle_cookie_consent()
         
-        # Extract URLs
+        # Dynamically discover the total number of jornadas in the competition
+        total_jornadas = scraper.get_total_jornadas(
+            cod_competicion=COD_COMPETICION,
+            cod_grupo=COD_GRUPO
+        )
+        
+        if total_jornadas == 0:
+            print("[ERROR] Could not parse the total number of jornadas. Defaulting to 1 for safety.")
+            total_jornadas = 1
+            
+        # Extract URLs only for the target team
+        print(f"[INFO] Extracting match URLs for {TARGET_TEAM} across {total_jornadas} jornadas...")
         match_urls = scraper.extract_matches_from_competition(
             cod_competicion=COD_COMPETICION, 
             cod_grupo=COD_GRUPO, 
-            jornadas=JORNADAS
+            jornadas=total_jornadas,
+            target_team=TARGET_TEAM
         )
         
+        total = len(match_urls)
+        print(f"[INFO] Total match URLs found for {TARGET_TEAM}: {total}")
+        
         # Parse Matches
-        for idx, url in enumerate(match_urls):
-            print(f"--- Processing match {idx+1}/{len(match_urls)} ---")
+        for i, url in enumerate(match_urls, 1):
+            print(f"--- Processing match {i}/{total} ---")
             
             # The URL might need cod_acta added manually if not present, but the extraction gets it.
             match_data = scraper.parse_match_report(url, target_team=TARGET_TEAM)
@@ -326,13 +396,26 @@ def main():
             if match_data:
                 # To ensure it was a match that Huesca played
                 info = match_data['match_info']
-                if TARGET_TEAM.lower() in info.get('home_team', '').lower() or TARGET_TEAM.lower() in info.get('away_team', '').lower():
+                home = info.get('home_team', '').lower()
+                away = info.get('away_team', '').lower()
+                target_lower = TARGET_TEAM.lower()
+                
+                # Check for exact match or startswith to avoid matching "HUESCA-S.D. ESCUELA DE FUTBOL" when looking for "HUESCA-S.D."
+                is_home = (home == target_lower or home.startswith(f"{target_lower} "))
+                is_away = (away == target_lower or away.startswith(f"{target_lower} "))
+                
+                if is_home or is_away:
                     exporter.append_match_data(match_data)
                 else:
                     print(f"Skipped: {TARGET_TEAM} did not play this match.")
-                    
-            # Small delay to be polite
-            time.sleep(1)
+            else:
+                print(f"Failed to extract match {i}")
+            
+            # Anti-scraping delay between matches
+            if i < total:
+                wait_time = random.uniform(1.5, 3.5)
+                print(f"Sleeping for {wait_time:.1f}s to avoid rate limiting...")
+                time.sleep(wait_time)
             
         exporter.save()
         
