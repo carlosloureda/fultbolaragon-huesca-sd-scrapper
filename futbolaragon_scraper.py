@@ -411,7 +411,18 @@ class ExcelExporter:
                 ws.auto_filter.ref = ws.dimensions
         
         wb.save(self.filename)
+        
+        # Export logic for JSON (for Web Dashboard)
+        import json
+        json_filename = self.filename.replace(".xlsx", ".json")
+        with open(json_filename, "w", encoding="utf-8") as f:
+            json.dump({
+                "matches": self.matches_data,
+                "players": self.players_data
+            }, f, indent=2, ensure_ascii=False)
+            
         print(f"[SUCCESS] Advanced KPIs and Data exported to {self.filename}")
+        print(f"[SUCCESS] Web dashboard data exported to {json_filename}")
 
 def main():
     # Setup params
