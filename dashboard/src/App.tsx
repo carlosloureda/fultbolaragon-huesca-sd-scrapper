@@ -41,14 +41,20 @@ function App() {
           titularidades: 0,
           vecesSuplente: 0,
           minutosPorPartido: 0,
-          porcentajeTitular: 0
+          porcentajeTitular: 0,
+          goles: 0,
+          asistencias: 0,
+          posicion: p["Posición"] || "—"
         };
       }
-      
+
       const s = stats[p.Jugador];
       s.partidosConvocado += 1;
       s.minutos += (p["Minutos Jugados"] || 0);
       s.titularidades += (p["Titularidad_num"] || 0);
+      s.goles += (p["Goles"] || 0);
+      s.asistencias += (p["Asistencias"] || 0);
+      if (p["Posición"] && s.posicion === "—") s.posicion = p["Posición"];
       if (p["Jugó"] === "Sí") s.partidosJugados += 1;
       if (p["Suplente Usado"] === "Sí") s.vecesSuplente += 1;
     });
