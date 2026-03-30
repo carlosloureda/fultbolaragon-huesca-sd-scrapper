@@ -578,6 +578,17 @@ def main():
             
         exporter.save()
         
+        # Auto-push updated data to GitHub → triggers Vercel auto-deploy
+        print("\n[GIT] Pushing updated data to GitHub...")
+        import subprocess
+        try:
+            subprocess.run(["git", "add", "dashboard/public/futbolaragon_data.json"], check=True)
+            subprocess.run(["git", "commit", "-m", "chore: update match data [scraper]"], check=True)
+            subprocess.run(["git", "push"], check=True)
+            print("[GIT] ✅ Data pushed. Vercel will auto-deploy in ~30s.")
+        except subprocess.CalledProcessError as e:
+            print(f"[GIT] ⚠️  Git push failed (maybe no changes or no remote): {e}")
+        
     finally:
         scraper.teardown_browser()
 

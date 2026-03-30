@@ -1,0 +1,17 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Data files (root level - only dashboard/public/ version goes to git)
+futbolaragon_data.json
+futbolaragon_data.xlsx
+
+# Debug artifacts
+debug_*.png
+*.tmp
+
+# OS
+.DS_Store
