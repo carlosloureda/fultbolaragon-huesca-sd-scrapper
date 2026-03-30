@@ -93,21 +93,31 @@ class FutbolAragonScraper:
                 # Each match is usually in a table with width="100%"
                 match_tables = soup.find_all('table', width="100%")
                 
-                # Each match is usually in a table with width="100%"
-                match_tables = soup.find_all('table', width="100%")
-                
                 added = 0
                 for table in match_tables:
-                    # Check if the target team plays in this match
-                    if target_team.lower() in table.get_text().lower():
-                        # Extract acta
+                    text_content = table.get_text().lower()
+                    if target_team.lower() in text_content:
                         acta_link = table.find('a', href=re.compile(r'NFG_CmpPartido.*CodActa='))
+                        
+                        # Extract exact Date and Time from the row text (e.g. "28-03-2026 \n 13:15")
+                        full_txt = table.get_text(separator=' | ', strip=True)
+                        date_match = re.search(r'(\d{2}-\d{2}-\d{4})', full_txt)
+                        time_match = re.search(r'(\d{2}:\d{2})', full_txt)
+                        fecha_str = date_match.group(1) if date_match else ""
+                        hora_str = time_match.group(1) if time_match else ""
+
                         if acta_link:
                             href = acta_link.get('href')
                             if href:
                                 full_url = href if href.startswith('http') else f"{self.base_url}{href}"
-                                if full_url not in match_urls:
-                                    match_urls.append(full_url)
+                                # Ensure no duplicates
+                                if not any(m['url'] == full_url for m in match_urls):
+                                    match_urls.append({
+                                        'url': full_url,
+                                        'jornada': jornada,
+                                        'fecha': fecha_str,
+                                        'hora': hora_str
+                                    })
                                     added += 1
                                     
                 if added > 0:
@@ -124,10 +134,13 @@ class FutbolAragonScraper:
                 # Even on error, wait to let the server recover
                 time.sleep(random.uniform(5.0, 10.0))
                 
-        return list(set(match_urls))
+        # Sort chronically to guarantee match sequence in the output DB and Excel
+        match_urls.sort(key=lambda x: x['jornada'])
+        return match_urls
         
-    def parse_match_report(self, url, target_team, match_length=80):
-        print(f"[INFO] Parsing match: {url}")
+    def parse_match_report(self, match_obj, target_team, match_length=80):
+        url = match_obj['url']
+        print(f"[INFO] Parsing match: J{match_obj['jornada']} | {url}")
         try:
             self.page.goto(url)
             self.page.wait_for_selector("table", timeout=10000)
@@ -144,10 +157,11 @@ class FutbolAragonScraper:
         }
         
         # Match Info
-        header_info = soup.find('h5', class_='font-grey-cascade')
-        if header_info:
-            data['match_info']['subtitle'] = header_info.get_text(" ", strip=True)
-            
+        data['match_info']['subtitle'] = f"Jornada {match_obj['jornada']} - {match_obj['fecha']} {match_obj['hora']}"
+        data['match_info']['jornada'] = match_obj['jornada']
+        data['match_info']['fecha'] = match_obj['fecha']
+        data['match_info']['hora'] = match_obj['hora']
+        
         div_header = soup.find('h4', style=lambda value: value and 'display: inline-block' in value)
         if div_header:
             data['match_info']['division'] = div_header.get_text(strip=True)
@@ -160,71 +174,108 @@ class FutbolAragonScraper:
         data['match_info']['home_team'] = home_team
         data['match_info']['away_team'] = away_team
 
-        team_rosters = soup.find_all('div', class_='dashboard-stat grey')
+        # STRUCTURE-AWARE PARSER (v7)
+        # The page structure is: div.details > (div.number + div.desc)
+        # div.number = section name (team name, "Goles", "Árbitros", etc.)
+        # div.desc = content for that section
         
-        for roster in team_rosters:
-            icon = roster.find('i', class_='fa-users')
-            if not icon:
+        for details_block in soup.find_all('div', class_='details'):
+            number_div = details_block.find('div', class_='number')
+            desc_div = details_block.find('div', class_='desc')
+            
+            if not number_div or not desc_div:
                 continue
             
-            team_name_elem = roster.find('div', class_='number')
-            if not team_name_elem:
+            section_name = number_div.get_text(strip=True)
+            
+            # GOALS block: "Goles" is a standalone section
+            if 'Goles' in section_name:
+                table = desc_div.find('table')
+                if table:
+                    for row in table.find_all('tr'):
+                        cols = row.find_all('td')
+                        if len(cols) >= 2:
+                            name_text = cols[1].get_text(strip=True)
+                            num_goals = max(1, len(re.findall(r"'", name_text)))
+                            clean_name = re.sub(r'\(.*?\)', '', name_text).strip()
+                            clean_name = re.sub(r'^\d+\-?\d*', '', clean_name).strip()
+                            # Store goals globally to match to team later
+                            data.setdefault('_all_goals', []).append({
+                                'name': clean_name,
+                                'count': num_goals
+                            })
                 continue
+            
+            # TEAM block: team name contains a dash (e.g. HUESCA-S.D., FRAGA-FÚTBOL BASE)
+            if '-' in section_name and 'Árbitros' not in section_name:
+                team_name = section_name
+                data['teams'][team_name] = {'starters': [], 'subs': [], 'substitutions': [], 'goals': []}
                 
-            team_name = team_name_elem.get_text(strip=True)
-            data['teams'][team_name] = {'starters': [], 'subs': [], 'substitutions': []}
-            
-            blocks = roster.find('div', class_='desc').find_all(['h5', 'h4', 'table'])
-            current_section = None
-            for block in blocks:
-                if block.name in ['h4', 'h5']:
-                    text_content = block.get_text(strip=True)
-                    if 'Titulares' in text_content:
-                        current_section = 'starters'
-                    elif 'Suplentes' in text_content:
-                        current_section = 'subs'
-                    elif 'Sustituciones' in text_content:
-                        current_section = 'substitutions'
-                    elif 'Tarjetas' in text_content or 'Cuerpo Técnico' in text_content:
-                        current_section = None
-                elif block.name == 'table':
-                    if current_section in ['starters', 'subs']:
-                        rows = block.find_all('tr')
-                        for row in rows:
-                            cols = row.find_all('td')
-                            if len(cols) >= 2:
-                                number = cols[0].get_text(strip=True)
-                                if not number.isdigit(): 
-                                    continue
-                                name = cols[1].get_text(strip=True)
-                                data['teams'][team_name][current_section].append({
-                                    'number': number,
-                                    'name': name
-                                })
-                    elif current_section == 'substitutions':
-                        rows = block.find_all('tr')
-                        if len(rows) == 2:
-                            in_cols = rows[0].find_all('td')
-                            out_cols = rows[1].find_all('td')
-                            
-                            if len(in_cols) >= 2 and len(out_cols) >= 2:
-                                in_num = in_cols[0].get_text(strip=True)
-                                in_name = in_cols[1].get_text(strip=True)
+                current_section = None
+                for child in desc_div.children:
+                    if not hasattr(child, 'name') or not child.name:
+                        continue
+                    
+                    child_txt = child.get_text(strip=True)
+                    
+                    # h5 = section subtitle (Titulares, Suplentes, etc.)
+                    if child.name in ['h5', 'h4']:
+                        if 'Titulares' in child_txt: current_section = 'starters'
+                        elif 'Suplentes' in child_txt: current_section = 'subs'
+                        elif 'Sustituciones' in child_txt: current_section = 'substitutions'
+                        elif any(x in child_txt for x in ['Tarjetas', 'Cuerpo Técnico']): current_section = None
+                    
+                    elif child.name == 'table' and current_section:
+                        if current_section in ['starters', 'subs']:
+                            for row in child.find_all('tr'):
+                                cols = row.find_all('td')
+                                if len(cols) >= 2:
+                                    num = cols[0].get_text(strip=True)
+                                    if not num.isdigit(): continue
+                                    name = cols[1].get_text(strip=True)
+                                    data['teams'][team_name][current_section].append({'number': num, 'name': name})
+                        
+                        elif current_section == 'substitutions':
+                            rows = child.find_all('tr')
+                            if len(rows) >= 1:
+                                # Each substitution is ONE table with 1 row (in) or structure varies
+                                # Row 0 = player IN, Row 1 = player OUT
+                                in_row = rows[0]
+                                out_row = rows[1] if len(rows) > 1 else rows[0]
                                 
-                                out_num = out_cols[0].get_text(strip=True)
-                                out_text = out_cols[1].get_text(strip=True)
+                                in_cols = in_row.find_all('td')
+                                out_cols = out_row.find_all('td')
                                 
-                                minute_match = re.search(r'\((\d+)\'\)', out_text)
-                                minute = int(minute_match.group(1)) if minute_match else None
-                                out_raw_name = re.sub(r'\(\d+\'\)', '', out_text).strip()
+                                in_num = in_cols[0].get_text(strip=True) if in_cols else '0'
+                                out_num = out_cols[0].get_text(strip=True) if out_cols else '0'
+                                out_txt = out_cols[1].get_text(strip=True) if len(out_cols) > 1 else ''
+                                
+                                min_match = re.search(r"\((\d+)'?\)", out_txt)
+                                minute = int(min_match.group(1)) if min_match else 0
                                 
                                 data['teams'][team_name]['substitutions'].append({
                                     'in_number': in_num,
-                                    'in_name': in_name,
                                     'out_number': out_num,
-                                    'out_name': out_raw_name,
                                     'minute': minute
                                 })
+        
+        # Now assign goals to the correct team using fuzzy word matching
+        all_goals = data.get('_all_goals', [])
+        if all_goals and data['teams']:
+            # Goals belong to whichever of the two teams the player is registered in
+            for team_name, team_data_inner in data['teams'].items():
+                all_players = {p['name'] for p in team_data_inner['starters'] + team_data_inner['subs']}
+                for g in all_goals:
+                    g_words = set(g['name'].lower().replace(',', '').split())
+                    for p_name in all_players:
+                        p_words = set(p_name.lower().replace(',', '').split())
+                        if len(g_words.intersection(p_words)) >= 1:
+                            team_data_inner['goals'].append(g)
+                            break
+            # Clean up temp key
+            del data['_all_goals']
+        
+        # v7 parser complete - proceed to calculate stats
 
         # Calculate minutes
         target_stats = self._calculate_player_stats(data, target_team, match_length)
@@ -252,7 +303,8 @@ class FutbolAragonScraper:
                 'is_starter': True,
                 'minutes_played': match_length,
                 'entry_minute': 0,
-                'exit_minute': match_length
+                'exit_minute': match_length,
+                'goals': 0
             }
         
         for p in team_data['subs']:
@@ -261,25 +313,49 @@ class FutbolAragonScraper:
                 'is_starter': False,
                 'minutes_played': 0,
                 'entry_minute': None,
-                'exit_minute': None
+                'exit_minute': None,
+                'goals': 0
             }
 
+        # Build a number->name index for faster lookup
+        number_to_name = {stats['number']: name for name, stats in player_stats.items()}
+
         for sub in team_data['substitutions']:
-            minute = sub['minute'] or match_length
+            minute = sub.get('minute') or match_length
             
-            # Player Out
-            out_p = player_stats.get(sub['out_name'])
+            # Player Out: look up by dorsal number
+            out_name = number_to_name.get(sub.get('out_number', ''))
+            out_p = player_stats.get(out_name) if out_name else None
             if out_p:
                 out_p['exit_minute'] = minute
                 if out_p['entry_minute'] is not None:
                     out_p['minutes_played'] = minute - out_p['entry_minute']
-                    
-            # Player In
-            in_p = player_stats.get(sub['in_name'])
+            
+            # Player In: look up by dorsal number
+            in_name = number_to_name.get(sub.get('in_number', ''))
+            in_p = player_stats.get(in_name) if in_name else None
             if in_p:
                 in_p['entry_minute'] = minute
                 in_p['exit_minute'] = match_length
                 in_p['minutes_played'] = match_length - minute
+
+        # Register goals strictly matched
+        for g in team_data.get('goals', []):
+            g_words = set(g['name'].lower().replace(',', '').split())
+            if not g_words: continue
+            
+            best_match = None
+            best_score = 0
+            
+            for p_name, stats in player_stats.items():
+                p_words = set(p_name.lower().replace(',', '').split())
+                score = len(g_words.intersection(p_words))
+                if score > best_score:
+                    best_score = score
+                    best_match = stats
+            
+            if best_match and best_score > 0:
+                best_match['goals'] += g['count']
 
         stats_list = []
         for name, stats in player_stats.items():
@@ -336,6 +412,7 @@ class ExcelExporter:
                 "Min. Entrada": min_in,
                 "Min. Salida": min_out,
                 "Minutos Jugados": min_played,
+                "Goles": p.get('goals', 0),
                 "Jugó": "Sí" if min_played > 0 else "No",
                 "Suplente Usado": "Sí" if titular == "No" and min_played > 0 else "No",
                 "Titularidad_num": 1 if p['is_starter'] else 0
@@ -415,14 +492,23 @@ class ExcelExporter:
         # Export logic for JSON (for Web Dashboard)
         import json
         json_filename = self.filename.replace(".xlsx", ".json")
-        with open(json_filename, "w", encoding="utf-8") as f:
-            json.dump({
-                "matches": self.matches_data,
-                "players": self.players_data
-            }, f, indent=2, ensure_ascii=False)
+        
+        # Save JSON directly to the dashboard public directory so it updates React automatically
+        json_path = "dashboard/public/futbolaragon_data.json"
+        
+        web_data = {
+            "matches": self.matches_data,
+            "players": self.players_data
+        }
+        
+        # Make directories if they somehow don't exist
+        import os
+        os.makedirs(os.path.dirname(json_path), exist_ok=True)
+        
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(web_data, f, ensure_ascii=False, indent=2)
             
-        print(f"[SUCCESS] Advanced KPIs and Data exported to {self.filename}")
-        print(f"[SUCCESS] Web dashboard data exported to {json_filename}")
+        print(f"[SUCCESS] Web dashboard data exported to {json_path}")
 
 def main():
     # Setup params
@@ -461,11 +547,10 @@ def main():
         print(f"[INFO] Total match URLs found for {TARGET_TEAM}: {total}")
         
         # Parse Matches
-        for i, url in enumerate(match_urls, 1):
+        for i, match_obj in enumerate(match_urls, 1):
             print(f"--- Processing match {i}/{total} ---")
             
-            # The URL might need cod_acta added manually if not present, but the extraction gets it.
-            match_data = scraper.parse_match_report(url, target_team=TARGET_TEAM)
+            match_data = scraper.parse_match_report(match_obj, target_team=TARGET_TEAM)
             
             if match_data:
                 # To ensure it was a match that Huesca played

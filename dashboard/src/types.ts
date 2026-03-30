@@ -20,6 +20,9 @@ export interface PlayerLog {
   "Jugó": "Sí" | "No";
   "Suplente Usado": "Sí" | "No";
   "Titularidad_num": 1 | 0;
+  "Goles"?: number;
+  "Asistencias"?: number;
+  "Posición"?: string;
 }
 
 export interface Dataset {
@@ -37,4 +40,7 @@ export interface PlayerAggregatedStats {
   vecesSuplente: number;
   minutosPorPartido: number;
   porcentajeTitular: number;
+  goles: number;
+  asistencias: number;
+  posicion: string;
 }

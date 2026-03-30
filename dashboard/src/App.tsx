@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import './App.css';
 import type { Dataset, PlayerAggregatedStats } from './types';
 import DashboardView from './components/DashboardView';
