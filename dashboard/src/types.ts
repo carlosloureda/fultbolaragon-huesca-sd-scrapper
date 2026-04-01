@@ -5,6 +5,8 @@ export interface Match {
   "Equipo": string;
   "Rival": string;
   "Condición": "Local" | "Visitante";
+  "Score"?: string;
+  "Result"?: "W" | "L" | "D" | "Unknown";
 }
 
 export interface PlayerLog {
@@ -21,6 +23,8 @@ export interface PlayerLog {
   "Suplente Usado": "Sí" | "No";
   "Titularidad_num": 1 | 0;
   "Goles"?: number;
+  "Amarillas"?: number;
+  "Rojas"?: number;
   "Asistencias"?: number;
   "Posición"?: string;
 }
@@ -41,6 +45,8 @@ export interface PlayerAggregatedStats {
   minutosPorPartido: number;
   porcentajeTitular: number;
   goles: number;
+  amarillas: number;
+  rojas: number;
   asistencias: number;
   posicion: string;
 }

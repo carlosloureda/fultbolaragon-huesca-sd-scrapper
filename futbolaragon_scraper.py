@@ -174,6 +174,28 @@ class FutbolAragonScraper:
         data['match_info']['home_team'] = home_team
         data['match_info']['away_team'] = away_team
 
+        # Score Extraction
+        marcador_elem = soup.find('div', class_='font_widget_marcador')
+        if marcador_elem:
+            score_text = marcador_elem.get_text(strip=True)
+            data['match_info']['score'] = score_text
+            # Identify if target team won, lost or drew
+            try:
+                parts = score_text.split('-')
+                h_score = int(parts[0].strip())
+                a_score = int(parts[1].strip())
+                is_home = target_team.lower() in home_team.lower()
+                
+                my_score = h_score if is_home else a_score
+                rival_score = a_score if is_home else h_score
+                
+                if my_score > rival_score: result = "W"
+                elif my_score < rival_score: result = "L"
+                else: result = "D"
+                data['match_info']['result'] = result
+            except:
+                data['match_info']['result'] = "Unknown"
+
         # STRUCTURE-AWARE PARSER (v7)
         # The page structure is: div.details > (div.number + div.desc)
         # div.number = section name (team name, "Goles", "Árbitros", etc.)
@@ -223,7 +245,8 @@ class FutbolAragonScraper:
                         if 'Titulares' in child_txt: current_section = 'starters'
                         elif 'Suplentes' in child_txt: current_section = 'subs'
                         elif 'Sustituciones' in child_txt: current_section = 'substitutions'
-                        elif any(x in child_txt for x in ['Tarjetas', 'Cuerpo Técnico']): current_section = None
+                        elif 'Tarjetas' in child_txt: current_section = 'cards'
+                        elif 'Cuerpo Técnico' in child_txt: current_section = None
                     
                     elif child.name == 'table' and current_section:
                         if current_section in ['starters', 'subs']:
@@ -233,7 +256,25 @@ class FutbolAragonScraper:
                                     num = cols[0].get_text(strip=True)
                                     if not num.isdigit(): continue
                                     name = cols[1].get_text(strip=True)
-                                    data['teams'][team_name][current_section].append({'number': num, 'name': name})
+                                    data['teams'][team_name][current_section].append({'number': num, 'name': name, 'yellow_cards': 0, 'red_cards': 0})
+                        
+                        elif current_section == 'cards':
+                            # Parse yellow and red cards
+                            # Rows: [Color, Player Name/Info]
+                            for row in child.find_all('tr'):
+                                cols = row.find_all('td')
+                                if len(cols) >= 2:
+                                    card_info = cols[1].get_text(strip=True)
+                                    # Extract minute and player name
+                                    # Format is usually: "Player Name (Minute')"
+                                    clean_name = re.sub(r'\(.*?\)', '', card_info).strip()
+                                    is_yellow = 'amarilla' in str(cols[0]).lower() or 'yellow' in str(cols[0]).lower()
+                                    is_red = 'roja' in str(cols[0]).lower() or 'red' in str(cols[0]).lower()
+                                    
+                                    data.setdefault('_all_cards', []).append({
+                                        'name': clean_name,
+                                        'type': 'Y' if is_yellow else 'R'
+                                    })
                         
                         elif current_section == 'substitutions':
                             rows = child.find_all('tr')
@@ -274,6 +315,22 @@ class FutbolAragonScraper:
                             break
             # Clean up temp key
             del data['_all_goals']
+            
+        # Assign cards using fuzzy matching
+        all_cards = data.get('_all_cards', [])
+        if all_cards and data['teams']:
+            for team_name, team_data_inner in data['teams'].items():
+                # Get all players for this team to search against
+                target_players_list = team_data_inner['starters'] + team_data_inner['subs']
+                for c in all_cards:
+                    c_words = set(c['name'].lower().replace(',', '').split())
+                    for p in target_players_list:
+                        p_words = set(p['name'].lower().replace(',', '').split())
+                        if len(c_words.intersection(p_words)) >= 1:
+                            if c['type'] == 'Y': p['yellow_cards'] = p.get('yellow_cards', 0) + 1
+                            else: p['red_cards'] = p.get('red_cards', 0) + 1
+                            break
+            del data['_all_cards']
         
         # v7 parser complete - proceed to calculate stats
 
@@ -392,7 +449,9 @@ class ExcelExporter:
             "Partido": match_title,
             "Equipo": self.target_team,
             "Rival": rival,
-            "Condición": condicion
+            "Condición": condicion,
+            "Score": info.get('score', ''),
+            "Result": info.get('result', '')
         })
         
         # Append players
@@ -413,6 +472,8 @@ class ExcelExporter:
                 "Min. Salida": min_out,
                 "Minutos Jugados": min_played,
                 "Goles": p.get('goals', 0),
+                "Amarillas": p.get('yellow_cards', 0),
+                "Rojas": p.get('red_cards', 0),
                 "Jugó": "Sí" if min_played > 0 else "No",
                 "Suplente Usado": "Sí" if titular == "No" and min_played > 0 else "No",
                 "Titularidad_num": 1 if p['is_starter'] else 0
@@ -431,6 +492,9 @@ class ExcelExporter:
                 Partidos_Convocado=("Partido", "count"),
                 Titularidades=("Titularidad_num", "sum"),
                 Minutos_Totales=("Minutos Jugados", "sum"),
+                Goles_Totales=("Goles", "sum"),
+                Amarillas=("Amarillas", "sum"),
+                Rojas=("Rojas", "sum")
             ).reset_index()
             
             suplencias_usado = df_players[df_players["Suplente Usado"] == "Sí"].groupby("Jugador").size().reset_index(name="Suplencias Usado")
@@ -442,6 +506,8 @@ class ExcelExporter:
             resumen["Suplencias Usado"] = resumen["Suplencias Usado"].astype(int)
             resumen["Partidos Jugados"] = resumen["Partidos Jugados"].astype(int)
             resumen["Titularidades"] = resumen["Titularidades"].astype(int)
+            resumen["Amarillas"] = resumen["Amarillas"].astype(int)
+            resumen["Rojas"] = resumen["Rojas"].astype(int)
             
             resumen["Media Min/PJ"] = (resumen["Minutos_Totales"] / resumen.replace({'Partidos Jugados': {0: pd.NA}})["Partidos Jugados"]).fillna(0).round(1)
             resumen["% Titularidad"] = ((resumen["Titularidades"] / resumen.replace({'Partidos Jugados': {0: pd.NA}})["Partidos Jugados"]) * 100).fillna(0).round(1)

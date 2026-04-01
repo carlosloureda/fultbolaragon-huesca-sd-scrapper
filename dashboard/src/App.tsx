@@ -43,6 +43,8 @@ function App() {
           minutosPorPartido: 0,
           porcentajeTitular: 0,
           goles: 0,
+          amarillas: 0,
+          rojas: 0,
           asistencias: 0,
           posicion: p["Posición"] || "—"
         };
@@ -53,6 +55,8 @@ function App() {
       s.minutos += (p["Minutos Jugados"] || 0);
       s.titularidades += (p["Titularidad_num"] || 0);
       s.goles += (p["Goles"] || 0);
+      s.amarillas += (p["Amarillas"] || 0);
+      s.rojas += (p["Rojas"] || 0);
       s.asistencias += (p["Asistencias"] || 0);
       if (p["Posición"] && s.posicion === "—") s.posicion = p["Posición"];
       if (p["Jugó"] === "Sí") s.partidosJugados += 1;

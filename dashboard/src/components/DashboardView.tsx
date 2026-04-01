@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { Dataset, PlayerAggregatedStats } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTTooltip, ResponsiveContainer, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { Users, Activity, ChevronDown, ChevronUp, Swords, Search, LayoutGrid, List } from 'lucide-react';
+import { Users, Activity, ChevronDown, ChevronUp, Swords, Search, LayoutGrid, List, Trophy, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -67,27 +67,27 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
   const [selectedPlayer, setSelectedPlayer] = useState<string>('TODO');
   const [vsPlayer, setVsPlayer] = useState<string>('NONE');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'minutos', direction: 'desc' });
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
   const [cardsFilter, setCardsFilter] = useState<string>('ALL');
 
   const { matches, players } = dataset;
 
-  // Enrich initialTeamStats with Mocks for Goals, Assists, Position until Scraper provides them
+  // Final enriched stats from logs
   const enrichedTeamStats = useMemo(() => {
     return initialTeamStats.map(p => {
-      // Find a raw log for this player to extract their Posición, Goles, Asistencias
       const logs = players.filter(l => l.Jugador === p.name);
-      
       return {
         ...p,
         goles: logs.reduce((acc, log) => acc + (log.Goles || 0), 0),
+        amarillas: logs.reduce((acc, log) => acc + (log.Amarillas || 0), 0),
+        rojas: logs.reduce((acc, log) => acc + (log.Rojas || 0), 0),
         asistencias: logs.reduce((acc, log) => acc + (log.Asistencias || 0), 0),
         posicion: logs[0]?.["Posición"] || 'Por definir'
       };
     });
   }, [initialTeamStats, players]);
 
-  // Sorting
+  // Sorting logic
   const teamStats = useMemo(() => {
     const sorted = [...enrichedTeamStats];
     sorted.sort((a, b) => {
@@ -112,17 +112,14 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
     return sortConfig.direction === 'asc' ? <ChevronUp className="w-4 h-4 text-blue-400 inline" /> : <ChevronDown className="w-4 h-4 text-blue-400 inline" />;
   };
 
-  // GLOBAL CONTEXT CALCS
   const teamAverageMins = useMemo(() => {
     if (teamStats.length === 0) return 0;
-    const totalMins = teamStats.reduce((acc, curr) => acc + curr.minutos, 0);
-    return totalMins / teamStats.length;
+    return teamStats.reduce((acc, curr) => acc + curr.minutos, 0) / teamStats.length;
   }, [teamStats]);
 
   const playerFocus = useMemo(() => teamStats.find(p => p.name === selectedPlayer) || null, [selectedPlayer, teamStats]);
   const playerVs = useMemo(() => teamStats.find(p => p.name === vsPlayer) || null, [vsPlayer, teamStats]);
 
-  // PARSE JORNADAS to sort chronologically
   const parsedMatches = useMemo(() => {
     return matches.map(m => {
       const title = m["Jornada/Fecha"] || "";
@@ -132,7 +129,6 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
     }).sort((a, b) => a.jNumber - b.jNumber);
   }, [matches]);
 
-  // RADAR PROFILE DATA
   const radarData = useMemo(() => {
     if (!playerFocus) return [];
     const maxMins = Math.max(...teamStats.map(p => p.minutos), 1);
@@ -140,24 +136,23 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
     const maxGols = Math.max(...teamStats.map(p => p.goles), 1);
     const maxAsts = Math.max(...teamStats.map(p => p.asistencias), 1);
 
-    const teamAvgMins = teamStats.reduce((a,b)=>a+b.minutos,0)/teamStats.length;
-    const teamAvgTits = teamStats.reduce((a,b)=>a+b.titularidades,0)/teamStats.length;
-    const teamAvgGols = teamStats.reduce((a,b)=>a+b.goles,0)/teamStats.length;
-    const teamAvgAsts = teamStats.reduce((a,b)=>a+b.asistencias,0)/teamStats.length;
+    const tAvgMins = teamStats.reduce((a,b)=>a+b.minutos,0)/teamStats.length;
+    const tAvgTits = teamStats.reduce((a,b)=>a+b.titularidades,0)/teamStats.length;
+    const tAvgGols = teamStats.reduce((a,b)=>a+b.goles,0)/teamStats.length;
+    const tAvgAsts = teamStats.reduce((a,b)=>a+b.asistencias,0)/teamStats.length;
 
     return [
-      { subject: 'Minutos', A: Math.round((playerFocus.minutos/maxMins)*100), B: Math.round((teamAvgMins/maxMins)*100) },
-      { subject: 'Titularidad', A: Math.round((playerFocus.titularidades/maxTits)*100), B: Math.round((teamAvgTits/maxTits)*100) },
-      { subject: 'Goles', A: Math.round((playerFocus.goles/maxGols)*100), B: Math.round((teamAvgGols/maxGols)*100) },
-      { subject: 'Asistencias', A: Math.round((playerFocus.asistencias/maxAsts)*100), B: Math.round((teamAvgAsts/maxAsts)*100) },
+      { subject: 'Minutos', A: Math.round((playerFocus.minutos/maxMins)*100), B: Math.round((tAvgMins/maxMins)*100) },
+      { subject: 'Titularidad', A: Math.round((playerFocus.titularidades/maxTits)*100), B: Math.round((tAvgTits/maxTits)*100) },
+      { subject: 'Goles', A: Math.round((playerFocus.goles/maxGols)*100), B: Math.round((tAvgGols/maxGols)*100) },
+      { subject: 'Asistencias', A: Math.round((playerFocus.asistencias/maxAsts)*100), B: Math.round((tAvgAsts/maxAsts)*100) },
       { subject: 'Confianza', A: Math.round((playerFocus.partidosJugados/Math.max(matches.length,1))*100), B: Math.round(((teamStats.reduce((a,b)=>a+b.partidosJugados,0)/teamStats.length)/matches.length)*100) },
     ];
   }, [playerFocus, teamStats, matches]);
+
   const evolutionData = useMemo(() => {
     return parsedMatches.map(match => {
       const dataPoint: any = { matchName: match.label, jNumber: match.jNumber };
-
-      // Base: The Team average for this specific match.
       const matchLogs = players.filter(p => p.Partido === match.Partido && p["Minutos Jugados"] > 0);
       const avgMins = matchLogs.length > 0 ? matchLogs.reduce((acc, curr) => acc + curr["Minutos Jugados"], 0) / matchLogs.length : 0;
       dataPoint.mediaEquipo = Math.round(avgMins);
@@ -175,8 +170,9 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
   }, [parsedMatches, players, playerFocus, playerVs]);
 
   const sortedOptions = useMemo(() => {
-    const opts = enrichedTeamStats.map(p => ({ value: p.name, label: `${p.name} (${p.dorsal})` }));
-    return opts.sort((a, b) => a.label.localeCompare(b.label));
+    return enrichedTeamStats
+      .map(p => ({ value: p.name, label: `${p.name} (${p.dorsal})` }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [enrichedTeamStats]);
 
   const mainSelectOptions = [
@@ -191,17 +187,16 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
 
   return (
     <div className="flex flex-col gap-8 p-4 md:p-8 max-w-7xl mx-auto">
-      {/* GLOBAL CONTROLS HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-slate-800/80 p-6 rounded-2xl border border-slate-700/50 shadow-xl backdrop-blur-md">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl lg:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-emerald-400 to-teal-400">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-800/80 p-5 rounded-2xl border border-slate-700/50 shadow-xl backdrop-blur-md">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl lg:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-emerald-400 to-teal-400">
             Huesca SD - TactiCenter
           </h1>
-          <p className="text-slate-400 font-medium">Análisis Táctico y de Rotaciones Oficial - Selección de Análisis Avanzado</p>
+          <p className="text-slate-400 text-xs font-medium">Análisis Táctico y de Rotaciones Oficial</p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto z-50 relative">
-          {/* Main Player */}
           <div className="w-full sm:w-72">
             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 ml-1">Análisis Ppal.</label>
             <SearchableSelect 
@@ -215,7 +210,6 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
             />
           </div>
 
-          {/* V/S Player */}
           {selectedPlayer !== 'TODO' && (
             <div className="w-full sm:w-72 animate-in fade-in slide-in-from-left-4 z-40 relative">
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 ml-1 flex items-center gap-1">
@@ -233,103 +227,133 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
         </div>
       </div>
 
-      {/* VS COMPARISON CARDS / TEAM KPIs */}
+      {/* MAIN CONTENT AREA */}
       {selectedPlayer === 'TODO' ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-700/30 flex flex-col gap-2">
-            <span className="text-sm font-semibold uppercase tracking-wider text-slate-400">Total Plantilla</span>
-            <div className="text-4xl font-bold text-slate-100">{teamStats.length}</div>
-            <span className="text-xs text-slate-500">Jugadores evaluados</span>
+        <div className="flex flex-col gap-6">
+          {/* TEAM STREAK HIGHLIGHT */}
+          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-700/30 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Última Racha:</span>
+              <div className="flex gap-1.5">
+                {parsedMatches.slice(-10).map((m, i) => {
+                  const res = m.Result || 'Unknown';
+                  return (
+                    <div key={i} title={m.label} className={cn(
+                      "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shadow-lg transition-transform hover:scale-125 cursor-default",
+                      res === 'W' ? "bg-emerald-500 text-emerald-950" : 
+                      res === 'L' ? "bg-red-500 text-red-950" : 
+                      res === 'D' ? "bg-yellow-500 text-yellow-950" : "bg-slate-700 text-slate-400"
+                    )}>
+                      {res !== 'Unknown' ? res : '?'}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="hidden sm:flex gap-6 text-xs text-slate-400 font-semibold text-right">
+               <div><span className="text-slate-100 text-lg block">{teamStats.length}</span> PLANTILLA</div>
+               <div><span className="text-slate-100 text-lg block">{matches.length}</span> PARTIDOS</div>
+               <div><span className="text-slate-100 text-lg block">{Math.round(teamAverageMins)}'</span> MEDIA MINS</div>
+            </div>
           </div>
-          <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-700/30 flex flex-col gap-2">
-            <span className="text-sm font-semibold uppercase tracking-wider text-slate-400">Partidos Activos</span>
-            <div className="text-4xl font-bold text-slate-100">{matches.length}</div>
-            <span className="text-xs text-slate-500">Base de datos</span>
-          </div>
-          <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-700/30 flex flex-col gap-2">
-            <span className="text-sm font-semibold uppercase tracking-wider text-slate-400">Promedio Mins.</span>
-            <div className="text-4xl font-bold text-slate-100">{Math.round(teamAverageMins)}'</div>
-            <span className="text-xs text-slate-500">Por jugador activo</span>
+
+          {/* HALL OF FAME: LIDERAZGO */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Pichichi */}
+            {(() => {
+              const top = [...teamStats].sort((a,b) => b.goles - a.goles)[0];
+              return top ? (
+                <div className="bg-gradient-to-br from-yellow-500/10 to-slate-900 border border-yellow-500/20 p-5 rounded-2xl relative overflow-hidden group">
+                   <Trophy className="absolute -right-4 -bottom-4 w-24 h-24 text-yellow-500/10 group-hover:text-yellow-500/20 transition-all rotate-12" />
+                  <h3 className="text-yellow-500 text-[10px] font-bold uppercase tracking-widest mb-1">Pichichi del Equipo</h3>
+                  <div className="text-2xl font-black text-slate-100">{top.name}</div>
+                  <div className="text-3xl font-black text-yellow-500 mt-2">{top.goles} <span className="text-xs font-normal text-slate-500">GOLES</span></div>
+                </div>
+              ) : null;
+            })()}
+
+            {/* Iron Man */}
+            {(() => {
+              const top = [...teamStats].sort((a,b) => b.minutos - a.minutos)[0];
+              return top ? (
+                <div className="bg-gradient-to-br from-blue-500/10 to-slate-900 border border-blue-500/20 p-5 rounded-2xl relative overflow-hidden group">
+                  <Activity className="absolute -right-4 -bottom-4 w-24 h-24 text-blue-500/10 group-hover:text-blue-500/20 transition-all -rotate-12" />
+                  <h3 className="text-blue-500 text-[10px] font-bold uppercase tracking-widest mb-1">Iron Man (Minutos)</h3>
+                  <div className="text-2xl font-black text-slate-100">{top.name}</div>
+                  <div className="text-3xl font-black text-blue-500 mt-2">{top.minutos}' <span className="text-xs font-normal text-slate-500">MINS</span></div>
+                </div>
+              ) : null;
+            })()}
+
+            {/* El Letal */}
+            {(() => {
+              const lethals = teamStats.filter(p => p.minutos > 180).sort((a,b) => (b.goles / b.minutos) - (a.goles / a.minutos));
+              const top = lethals[0];
+              return top ? (
+                <div className="bg-gradient-to-br from-emerald-500/10 to-slate-900 border border-emerald-500/20 p-5 rounded-2xl relative overflow-hidden group">
+                  <Swords className="absolute -right-4 -bottom-4 w-24 h-24 text-emerald-500/10 group-hover:text-emerald-500/20 transition-all" />
+                  <h3 className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest mb-1">El Letal (Goles/90m)</h3>
+                  <div className="text-2xl font-black text-slate-100">{top.name}</div>
+                  <div className="text-3xl font-black text-emerald-400 mt-2">{((top.goles / top.minutos) * 90).toFixed(2)} <span className="text-xs font-normal text-slate-500">RATIO</span></div>
+                </div>
+              ) : null;
+            })()}
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Player 1 Card */}
-          {playerFocus && (
-            <div className="bg-gradient-to-br from-blue-900/40 to-slate-900 border border-blue-800/50 p-6 rounded-2xl flex flex-col gap-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-2xl font-bold text-blue-100">{playerFocus.name}</h2>
-                  <span className="text-blue-400 text-sm font-medium tracking-widest uppercase">{playerFocus.posicion} • Dorsal {playerFocus.dorsal}</span>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Player Cards */}
+          {[playerFocus, playerVs].filter(Boolean).map((p, idx) => (
+            <div key={p!.name} className={cn(
+              "p-6 rounded-2xl border flex flex-col gap-4 shadow-2xl",
+              idx === 0 ? "bg-gradient-to-br from-blue-900/40 to-slate-900 border-blue-800/50" : "bg-gradient-to-br from-red-900/20 to-slate-900 border-red-800/30"
+            )}>
+              <div>
+                <h2 className={cn("text-2xl font-bold", idx === 0 ? "text-blue-100" : "text-red-100")}>{p!.name}</h2>
+                <span className={cn("text-sm font-medium tracking-widest uppercase", idx === 0 ? "text-blue-400" : "text-red-400")}>
+                  {p!.posicion} • Dorsal {p!.dorsal}
+                </span>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-2">
                 <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 text-center">
-                  <div className="text-2xl font-black text-slate-100">{playerFocus.minutos}'</div>
+                  <div className="text-2xl font-black text-slate-100">{p!.minutos}'</div>
                   <div className="text-xs text-slate-400 mt-1 uppercase">Mins</div>
                 </div>
                 <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 text-center">
-                  <div className="text-2xl font-black text-slate-100">{playerFocus.titularidades}</div>
+                  <div className="text-2xl font-black text-slate-100">{p!.titularidades}</div>
                   <div className="text-xs text-slate-400 mt-1 uppercase">Titular</div>
                 </div>
                 <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 text-center">
-                  <div className="text-2xl font-black text-slate-100">{playerFocus.goles}</div>
+                  <div className="text-2xl font-black text-emerald-400">{p!.goles}</div>
                   <div className="text-xs text-slate-400 mt-1 uppercase">Goles</div>
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Player 2 Card */}
-          {playerVs && (
-            <div className="bg-gradient-to-br from-red-900/20 to-slate-900 border border-red-800/30 p-6 rounded-2xl flex flex-col gap-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-2xl font-bold text-red-100">{playerVs.name}</h2>
-                  <span className="text-red-400 text-sm font-medium tracking-widest uppercase">{playerVs.posicion} • Dorsal {playerVs.dorsal}</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 text-center">
-                  <div className="text-2xl font-black text-slate-100">{playerVs.minutos}'</div>
-                  <div className="text-xs text-slate-400 mt-1 uppercase">Mins</div>
-                </div>
-                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 text-center">
-                  <div className="text-2xl font-black text-slate-100">{playerVs.titularidades}</div>
-                  <div className="text-xs text-slate-400 mt-1 uppercase">Titular</div>
-                </div>
-                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 text-center">
-                  <div className="text-2xl font-black text-slate-100">{playerVs.goles}</div>
-                  <div className="text-xs text-slate-400 mt-1 uppercase">Goles</div>
-                </div>
-              </div>
-            </div>
-          )}
+          ))}
         </div>
       )}
 
       {/* CHARTS LAYER */}
       {!playerFocus ? (
-        <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 shadow-lg">
-          <h2 className="text-xl font-bold flex items-center gap-2 mb-6">
-             <Activity className="text-emerald-400" /> Tensión Táctica y Rotaciones
-          </h2>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer>
-              <LineChart data={evolutionData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} vertical={false} />
-                <XAxis dataKey="matchName" tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={20} />
-                <YAxis tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} domain={[0, 95]} />
-                <RTTooltip contentStyle={{ backgroundColor: '#0F172A', border: '1px solid #1E293B', borderRadius: '12px' }} />
-                <Legend wrapperStyle={{ paddingTop: '20px' }}/>
-                <Line type="monotone" dataKey="mediaEquipo" name="Media Mins. Equipo" stroke="#64748b" strokeWidth={3} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+         <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 shadow-lg">
+           <h2 className="text-xl font-bold flex items-center gap-2 mb-6">
+              <Activity className="text-emerald-400" /> Tensión Táctica y Rotaciones
+           </h2>
+           <div className="h-[400px] w-full">
+             <ResponsiveContainer>
+               <LineChart data={evolutionData}>
+                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} vertical={false} />
+                 <XAxis dataKey="matchName" tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={20} />
+                 <YAxis tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} domain={[0, 95]} />
+                 <RTTooltip contentStyle={{ backgroundColor: '#0F172A', border: '1px solid #1E293B', borderRadius: '12px' }} />
+                 <Legend wrapperStyle={{ paddingTop: '20px' }}/>
+                 <Line type="monotone" dataKey="mediaEquipo" name="Media Mins. Equipo" stroke="#64748b" strokeWidth={3} dot={false} />
+               </LineChart>
+             </ResponsiveContainer>
+           </div>
+         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* RADAR CHART */}
            <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 shadow-lg flex flex-col">
              <h2 className="text-xl font-bold text-center mb-2">Perfil Base vs Equipo (Percentiles)</h2>
              <div className="h-[300px] w-full">
@@ -347,12 +371,11 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
              </div>
            </div>
 
-           {/* CONTINUITY HEATMAP */}
            <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 shadow-lg flex flex-col justify-center">
              <h2 className="text-xl font-bold mb-4">Mosaico de Continuidad</h2>
              <div className="flex flex-wrap gap-2 justify-center">
                {evolutionData.map((d, i) => {
-                  let intensity = 'bg-slate-800 border-slate-700'; // Missing/0
+                  let intensity = 'bg-slate-800 border-slate-700'; 
                   const mins = d.minutosJugador1 || 0;
                   if (mins > 75) intensity = 'bg-emerald-500 border-emerald-400';
                   else if (mins > 45) intensity = 'bg-emerald-400/80 border-emerald-300/80';
@@ -369,18 +392,16 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
                   )
                })}
              </div>
-             
              <div className="mt-8 flex items-center justify-center gap-4 text-xs font-medium text-slate-400">
                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-emerald-500 rounded-sm"></div> Titular Fijo</div>
-               <div className="flex items-center gap-1"><div className="w-3 h-3 bg-emerald-400/80 rounded-sm"></div> &gt;45m</div>
                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-yellow-500 rounded-sm"></div> Revulsivo</div>
-               <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-800 border border-slate-700 rounded-sm"></div> Banquillo/No Convocado</div>
+               <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-800 border border-slate-700 rounded-sm"></div> Banquillo</div>
              </div>
            </div>
         </div>
       )}
 
-      {/* ADVANCED DATA VIEW */}
+      {/* PLANTILLA VIEW */}
       {selectedPlayer === "TODO" && (
         <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 overflow-hidden shadow-lg flex flex-col gap-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -400,41 +421,29 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
           
           {viewMode === 'table' ? (
             <div className="overflow-x-auto">
-              {/* Note: Click headers to sort */}
               <table className="w-full text-left whitespace-nowrap">
-                {/* Headers */}
                 <thead>
                   <tr className="border-b border-slate-700 text-slate-400 uppercase text-xs tracking-wider">
                     <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400" onClick={() => handleSort('dorsal')}>Dorsal <SortIcon columnKey="dorsal"/></th>
                     <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400" onClick={() => handleSort('name')}>Jugador <SortIcon columnKey="name"/></th>
-                    <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400" onClick={() => handleSort('posicion')}>Posición <SortIcon columnKey="posicion"/></th>
                     <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400 text-right" onClick={() => handleSort('minutos')}>Minutos <SortIcon columnKey="minutos"/></th>
-                    <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400 text-center" onClick={() => handleSort('titularidades')}>Titular <SortIcon columnKey="titularidades"/></th>
-                    <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400 text-center" onClick={() => handleSort('porcentajeTitular')}>Ratio Tit. <SortIcon columnKey="porcentajeTitular"/></th>
                     <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400 text-center" onClick={() => handleSort('goles')}>Goles <SortIcon columnKey="goles"/></th>
+                    <th className="pb-4 pt-2 font-bold text-center">Tarjetas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {teamStats.map((p) => (
                     <tr key={p.name} className="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors">
-                      <td className="py-4">
-                        <span className="w-8 h-8 flex items-center justify-center bg-slate-900 border border-slate-700 rounded-lg text-sm font-bold text-slate-300">
-                          {p.dorsal}
-                        </span>
-                      </td>
+                      <td className="py-4"><span className="w-8 h-8 flex items-center justify-center bg-slate-900 border border-slate-700 rounded-lg text-sm font-bold text-slate-300">{p.dorsal}</span></td>
                       <td className="py-4 font-semibold text-slate-200">{p.name}</td>
-                      <td className="py-4 text-slate-400">{p.posicion}</td>
                       <td className="py-4 text-right font-bold text-blue-400 text-lg">{p.minutos}'</td>
-                      <td className="py-4 text-center text-slate-300">{p.titularidades}</td>
-                      <td className="py-4 text-center">
-                        <div className="flex items-center justify-center gap-3">
-                          <div className="w-20 h-2 bg-slate-800 rounded-full overflow-hidden">
-                            <div className={cn("h-full rounded-full transition-all", p.porcentajeTitular > 60 ? "bg-emerald-500" : p.porcentajeTitular > 30 ? "bg-yellow-500" : "bg-red-500")} style={{width: `${p.porcentajeTitular}%`}}></div>
-                          </div>
-                          <span className="text-xs text-slate-400 w-8">{p.porcentajeTitular}%</span>
-                        </div>
-                      </td>
                       <td className="py-4 font-bold text-center text-emerald-400">{p.goles > 0 ? p.goles : '-'}</td>
+                      <td className="py-4 text-center">
+                         <div className="flex items-center justify-center gap-2">
+                           {p.amarillas > 0 && <div className="flex items-center gap-1"><div className="w-2 h-3 bg-yellow-500 rounded-[1px]"></div><span className="text-xs font-bold">{p.amarillas}</span></div>}
+                           {p.rojas > 0 && <div className="flex items-center gap-1"><div className="w-2 h-3 bg-red-500 rounded-[1px]"></div><span className="text-xs font-bold">{p.rojas}</span></div>}
+                         </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -458,23 +467,27 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
                        </div>
                        <div className="text-2xl font-black text-slate-700 ml-2">#{p.dorsal}</div>
                      </div>
-                     <div className="grid grid-cols-2 gap-2 mt-auto">
+                      <div className="grid grid-cols-2 gap-2 mt-auto">
                         <div className="bg-slate-900/50 p-2 rounded-lg text-center flex flex-col justify-center border border-slate-700/50">
                           <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Minutos</span>
                           <span className="text-lg font-black text-blue-400">{p.minutos}'</span>
                         </div>
                         <div className="bg-slate-900/50 p-2 rounded-lg text-center flex flex-col justify-center border border-slate-700/50">
-                          <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Titular</span>
-                          <span className="text-lg font-black text-slate-200">{p.titularidades} <span className="text-[10px] font-normal text-slate-500">P.</span></span>
+                          <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Goles</span>
+                          <span className="text-lg font-black text-emerald-400">{p.goles}</span>
                         </div>
-                        <div className="bg-slate-900/50 p-2 rounded-lg text-center flex flex-col justify-center border border-slate-700/50 col-span-2">
-                          <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Goles OFICIALES</span>
-                          <span className="text-xl font-black text-emerald-400">{p.goles}</span>
+                        <div className="bg-slate-900/50 p-2 rounded-lg text-center flex flex-row items-center justify-center gap-3 border border-slate-700/50 col-span-2">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-3 h-4 bg-yellow-500 rounded-[1px] shadow-[0_0_8px_rgba(234,179,8,0.5)]"></div>
+                            <span className="text-lg font-black text-slate-200">{p.amarillas}</span>
+                          </div>
+                          <div className="w-px h-4 bg-slate-700"></div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-3 h-4 bg-red-500 rounded-[1px] shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
+                            <span className="text-lg font-black text-slate-200">{p.rojas}</span>
+                          </div>
                         </div>
-                     </div>
-                     <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden mt-1 relative">
-                        <div className={cn("absolute left-0 top-0 h-full", p.porcentajeTitular > 65 ? "bg-emerald-500" : p.porcentajeTitular > 30 ? "bg-yellow-500" : "bg-red-500")} style={{width: `${p.porcentajeTitular}%`}}></div>
-                     </div>
+                      </div>
                    </div>
                 ))}
               </div>
