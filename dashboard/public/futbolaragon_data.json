@@ -5641,7 +5641,7 @@
       "Minutos Jugados": 58,
       "Goles": 1,
       "Amarillas": 0,
-      "Rojas": 0,
+      "Rojas": 1,
       "Jugó": "Sí",
       "Suplente Usado": "No",
       "Titularidad_num": 1
@@ -9653,7 +9653,7 @@
       "Minutos Jugados": 80,
       "Goles": 0,
       "Amarillas": 0,
-      "Rojas": 1,
+      "Rojas": 0,
       "Jugó": "Sí",
       "Suplente Usado": "No",
       "Titularidad_num": 1
