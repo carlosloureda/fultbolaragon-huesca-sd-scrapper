@@ -174,25 +174,31 @@ class FutbolAragonScraper:
         data['match_info']['home_team'] = home_team
         data['match_info']['away_team'] = away_team
 
-        # Score Extraction
-        marcador_elem = soup.find('div', class_='font_widget_marcador')
-        if marcador_elem:
-            score_text = marcador_elem.get_text(strip=True)
+
+        # Score Extraction (Improved v7.3)
+        marcador = soup.find('div', class_='font_widget_marcador')
+        if not marcador:
+            # Fallback: find any div that looks like a score (X - Y)
+            marcador = soup.find('div', string=re.compile(r'\d+\s*-\s*\d+'))
+            
+        if marcador:
+            score_text = marcador.get_text(strip=True)
             data['match_info']['score'] = score_text
-            # Identify if target team won, lost or drew
             try:
-                parts = score_text.split('-')
-                h_score = int(parts[0].strip())
-                a_score = int(parts[1].strip())
-                is_home = target_team.lower() in home_team.lower()
-                
-                my_score = h_score if is_home else a_score
-                rival_score = a_score if is_home else h_score
-                
-                if my_score > rival_score: result = "W"
-                elif my_score < rival_score: result = "L"
-                else: result = "D"
-                data['match_info']['result'] = result
+                # Clean score (sometimes it has weird chars)
+                clean_score = re.search(r'(\d+)\s*-\s*(\d+)', score_text)
+                if clean_score:
+                    h_score = int(clean_score.group(1))
+                    a_score = int(clean_score.group(2))
+                    is_home = target_team.lower() in home_team.lower()
+                    
+                    my_score = h_score if is_home else a_score
+                    rival_score = a_score if is_home else h_score
+                    
+                    if my_score > rival_score: result = "W"
+                    elif my_score < rival_score: result = "L"
+                    else: result = "D"
+                    data['match_info']['result'] = result
             except:
                 data['match_info']['result'] = "Unknown"
 
@@ -361,7 +367,9 @@ class FutbolAragonScraper:
                 'minutes_played': match_length,
                 'entry_minute': 0,
                 'exit_minute': match_length,
-                'goals': 0
+                'goals': 0,
+                'yellow_cards': p.get('yellow_cards', 0),
+                'red_cards': p.get('red_cards', 0)
             }
         
         for p in team_data['subs']:
@@ -371,7 +379,9 @@ class FutbolAragonScraper:
                 'minutes_played': 0,
                 'entry_minute': None,
                 'exit_minute': None,
-                'goals': 0
+                'goals': 0,
+                'yellow_cards': p.get('yellow_cards', 0),
+                'red_cards': p.get('red_cards', 0)
             }
 
         # Build a number->name index for faster lookup
