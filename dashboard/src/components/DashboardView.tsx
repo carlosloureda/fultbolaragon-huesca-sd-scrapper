@@ -158,7 +158,7 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
 
   // --- GRID VIEW LOGIC ---
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortConfig] = useState<{key:string, direction:'asc'|'desc'}>({ key: 'goles', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{key:string, direction:'asc'|'desc'}>({ key: 'goles', direction: 'desc' });
   const [detailModal, setDetailModal] = useState<any>(null);
 
   const teamStats = useMemo(() => {
@@ -190,7 +190,7 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
               <span className="bg-emerald-500 text-emerald-950 px-1.5 py-0.5 rounded-[4px] text-[8px] md:text-[10px] font-black uppercase tracking-tighter">SDH</span>
               <h1 className="text-xl md:text-3xl font-black tracking-tighter uppercase italic leading-none">DATA<span className="text-emerald-400">CENTER</span></h1>
             </div>
-            <p className="text-slate-500 text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] mt-0.5">SCOUTING <em>BETA</em></p>
+            <p className="text-slate-500 text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] mt-0.5">SCOUTING <em>BETA</em> V0.6.5</p>
           </div>
           <div className="md:hidden">
             <a 
@@ -279,6 +279,28 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
                     )}
                   </div>
                 </div>
+                
+                {/* SORTING PILLS (V0.6.4) */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-4 custom-scrollbar -mx-2 px-2 lg:mx-0 lg:px-0">
+                   {[
+                     { k: 'goles', l: '⚽️ Goles' },
+                     { k: 'minutos', l: '⏱️ Minutos' },
+                     { k: 'dorsal', l: '🔟 Dorsal' }
+                   ].map(option => (
+                     <button
+                       key={option.k}
+                       onClick={() => setSortConfig({ key: option.k, direction: option.k === 'dorsal' ? 'asc' : 'desc' })}
+                       className={cn(
+                         "px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border",
+                         sortConfig.key === option.k 
+                           ? "bg-emerald-600 border-emerald-500 text-emerald-950 shadow-lg shadow-emerald-500/20 scale-105 z-10" 
+                           : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700"
+                       )}
+                     >
+                       {option.l}
+                     </button>
+                   ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 min-h-[400px]">
@@ -301,7 +323,7 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
                       </div>
                       <div className="grid grid-cols-2 gap-3 relative z-10">
                          <div className="bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 text-center"><span className="text-[10px] text-slate-600 uppercase font-black tracking-widest">MINS</span><div className="text-xl font-black text-slate-200">{p.minutos}'</div></div>
-                         <div className="bg-emerald-500/5 p-3 rounded-2xl border border-emerald-500/10 text-center"><span className="text-[10px] text-emerald-600 uppercase font-black tracking-widest">GOLS</span><div className="text-xl font-black text-emerald-400">{p.goles || '--'}</div></div>
+                         <div className="bg-emerald-500/5 p-3 rounded-2xl border border-emerald-500/10 text-center"><span className="text-[10px] text-emerald-600 uppercase font-black tracking-widest">GOLES</span><div className="text-xl font-black text-emerald-400">{p.goles || '--'}</div></div>
                       </div>
                     </div>
                   ))
@@ -385,7 +407,7 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
                </div>
                <div className="overflow-x-auto custom-scrollbar">
                  <table className="w-full text-left whitespace-nowrap text-xs md:text-sm">
-                   <thead className="sticky top-0 z-10 bg-slate-900 shadow-md"><tr className="bg-slate-950 text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest"><th className="px-5 md:px-8 py-3 md:py-4">Jornada</th><th className="px-5 md:px-8 py-3 md:py-4">Rival</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Rol</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Mins</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Gols</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Tarjetas</th></tr></thead>
+                   <thead className="sticky top-0 z-10 bg-slate-900 shadow-md"><tr className="bg-slate-950 text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest"><th className="px-5 md:px-8 py-3 md:py-4">Jornada</th><th className="px-5 md:px-8 py-3 md:py-4">Rival</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Rol</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Mins</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Goles</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Tarjetas</th></tr></thead>
                    <tbody className="divide-y divide-slate-800/40">
                      {logs.map((l, i) => (
                        <tr key={i} className="hover:bg-slate-800/30 transition-colors">
