@@ -11,7 +11,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   TrendingUp as TrendingUpIcon,
   CalendarIcon as CalendarIcon,
-  Award as AwardIcon,
+  FileDown as FileDownIcon,
   ShieldAlert as ShieldAlertIcon,
   X as XIcon,
   Target as TargetIcon
@@ -110,7 +110,7 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
     return { type: 'home' };
   }, [currentHash]);
 
-  // --- DYNAMIC TITLE (V5.3) ---
+  // --- DYNAMIC TITLE & SCROLL (V5.3 - V6.1) ---
   useEffect(() => {
     if (route.type === 'player' && route.id) {
       document.title = `${route.id.split(',')[0]} | SD HUESCA`;
@@ -119,6 +119,8 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
     } else {
       document.title = `SD HUESCA | DATACENTER`;
     }
+    // RESET SCROLL ON NAV (V6.1)
+    window.scrollTo(0, 0);
   }, [route]);
 
   const navigateTo = (path: string) => window.location.hash = path;
@@ -179,22 +181,34 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
 
   // --- RENDER MAIN ---
   return (
-    <div className="flex flex-col gap-8 p-4 md:p-8 max-w-7xl mx-auto text-slate-100 font-sans relative">
-      {/* GLOBAL HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/80 backdrop-blur-md p-6 rounded-3xl border-l-[8px] border-emerald-500 shadow-2xl sticky top-4 z-[60]">
-        <div className="flex flex-col gap-1 text-left cursor-pointer" onClick={goHome}>
-          <div className="flex items-center gap-2">
-            <span className="bg-emerald-500 text-emerald-950 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter">SD Huesca Official</span>
-            <h1 className="text-3xl font-black tracking-tighter uppercase italic">DATA<span className="text-emerald-400">CENTER</span></h1>
+    <div className="flex flex-col gap-4 md:gap-8 p-3 md:p-8 max-w-7xl mx-auto text-slate-100 font-sans relative">
+      {/* GLOBAL HEADER (RESPONSIVE V6.1) */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 bg-slate-900/90 backdrop-blur-xl p-4 md:p-6 rounded-[1.5rem] md:rounded-3xl border-l-[6px] md:border-l-[8px] border-emerald-500 shadow-2xl sticky top-0 md:top-4 z-[60] border border-slate-800/50">
+        <div className="flex items-center justify-between w-full md:w-auto">
+          <div className="flex flex-col gap-0.5 text-left cursor-pointer" onClick={goHome}>
+            <div className="flex items-center gap-2">
+              <span className="bg-emerald-500 text-emerald-950 px-1.5 py-0.5 rounded-[4px] text-[8px] md:text-[10px] font-black uppercase tracking-tighter">SDH</span>
+              <h1 className="text-xl md:text-3xl font-black tracking-tighter uppercase italic leading-none">DATA<span className="text-emerald-400">CENTER</span></h1>
+            </div>
+            <p className="text-slate-500 text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] mt-0.5">SCOUTING V6.3</p>
           </div>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mt-1">PRO SCOUTING APP V5.2</p>
+          <div className="md:hidden">
+            <a 
+              href="/futbolaragon_data.xlsx" 
+              download={`stats_huesca_${new Date().toISOString().split('T')[0]}.xlsx`} 
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl border border-slate-700/50 shadow-lg flex items-center justify-center active:scale-95 transition-transform gap-2"
+            >
+              <FileDownIcon className="w-5 h-5" />
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-100">Excel</span>
+            </a>
+          </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto z-50">
-          <a href="/futbolaragon_data.xlsx" download={`stats_huesca_${new Date().toISOString().split('T')[0]}.xlsx`} className="flex items-center justify-center gap-2 px-6 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-700/50 hover:border-emerald-500/30">
-            <AwardIcon className="w-4 h-4 text-emerald-400" /> Descargar Excel
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto z-50">
+          <a href="/futbolaragon_data.xlsx" download={`stats_huesca_${new Date().toISOString().split('T')[0]}.xlsx`} className="hidden md:flex items-center justify-center gap-2 px-5 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-700/50 hover:border-emerald-500/30">
+            <FileDownIcon className="w-4 h-4 text-emerald-400" /> Descargar Excel
           </a>
-          <div className="w-full sm:w-72">
+          <div className="w-full md:w-64">
             <SearchableSelect 
               options={[{ value: 'TODO', label: '📊 VISTA GENERAL' }, ...sortedUserOptions]}
               value={route.type === 'player' ? route.id : 'TODO'}
@@ -305,31 +319,31 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
         if (!stats) return <div className="p-20 text-center text-slate-500 font-bold uppercase tracking-widest">Jugador no encontrado</div>;
 
         return (
-          <div className="flex flex-col gap-8 animate-in slide-in-from-right-10 duration-500">
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <button onClick={goHome} className="w-full sm:w-auto px-6 py-3 bg-slate-900 border border-slate-700 rounded-2xl text-slate-400 hover:text-slate-100 transition-all flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest">
+          <div className="flex flex-col gap-6 md:gap-8 animate-in slide-in-from-right-10 duration-500 pt-2 md:pt-0">
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <button onClick={goHome} className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 border border-slate-700 rounded-2xl text-slate-400 hover:text-slate-100 transition-all flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-widest">
                 <ChevronLeftIcon className="w-4 h-4" /> Volver
               </button>
               <div className="hidden sm:block flex-1 h-px bg-slate-800/50"/>
-              <button onClick={() => navigateTo(`vs/${route.id}/NONE`)} className="w-full sm:w-auto px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-emerald-950 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/20">COMPARAR (VS)</button>
+              <button onClick={() => navigateTo(`vs/${route.id}/NONE`)} className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-emerald-950 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/20">COMPARAR (VS)</button>
             </div>
 
-            <div className="bg-slate-900 border-l-[12px] border-emerald-500 p-8 md:p-12 rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-8 relative overflow-hidden">
+            <div className="bg-slate-900 border-l-[8px] md:border-l-[12px] border-emerald-500 p-6 md:p-12 rounded-[2rem] md:rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-8 relative overflow-hidden">
                <div className="absolute top-0 right-0 h-full w-1/2 bg-gradient-to-l from-emerald-500/5 to-transparent pointer-events-none"/>
-               <div className="flex flex-col gap-3 relative z-10 text-left">
-                 <div className="flex items-center gap-3"><span className="text-emerald-400 font-black text-4xl italic tracking-tighter">#{stats.dorsal}</span><span className="h-8 w-[2px] bg-slate-800"/><span className="text-slate-500 font-black uppercase text-sm tracking-[0.3em]">{stats.posicion}</span></div>
-                 <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter italic text-slate-100 leading-none">{stats.name}</h1>
+               <div className="flex flex-col gap-2 md:gap-3 relative z-10 text-left">
+                 <div className="flex items-center gap-2 md:gap-3"><span className="text-emerald-400 font-black text-2xl md:text-4xl italic tracking-tighter">#{stats.dorsal}</span><span className="h-6 w-[2px] bg-slate-800"/><span className="text-slate-500 font-black uppercase text-[10px] md:text-sm tracking-[0.2em] md:tracking-[0.3em]">{stats.posicion}</span></div>
+                 <h1 className="text-3xl md:text-6xl font-black uppercase tracking-tighter italic text-slate-100 leading-none">{stats.name}</h1>
                </div>
-               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full md:w-auto relative z-10">
+               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 w-full md:w-auto relative z-10">
                   {[
                     { label: 'Goles', val: stats.goles, color: 'text-emerald-400', sub: 'Temporada' },
                     { label: 'Minutos', val: `${stats.minutos}'`, color: 'text-white', sub: 'Presencia' },
                     { label: 'Titular', val: `${stats.pTitularidad.toFixed(0)}%`, color: 'text-blue-400', sub: `${stats.titularidades} partidos` },
                     { label: 'Efic.', val: stats.efficiency.toFixed(2), color: 'text-orange-400', sub: 'G / 80 min' }
                   ].map(kpi => (
-                    <div key={kpi.label} className="bg-slate-950/40 p-5 rounded-3xl border border-slate-800/50 text-center min-w-[120px] backdrop-blur-md">
-                       <div className={cn("text-3xl font-black tracking-tighter", kpi.color)}>{kpi.val}</div>
-                       <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">{kpi.label}</div>
+                    <div key={kpi.label} className="bg-slate-950/40 p-3 md:p-5 rounded-2xl md:rounded-3xl border border-slate-800/50 text-center flex-1 backdrop-blur-md">
+                       <div className={cn("text-xl md:text-3xl font-black tracking-tighter", kpi.color)}>{kpi.val}</div>
+                       <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mt-0.5">{kpi.label}</div>
                     </div>
                   ))}
                </div>
@@ -365,22 +379,22 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
                </div>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-[2rem] shadow-xl overflow-hidden">
-               <div className="p-8 border-b border-slate-800 text-left bg-slate-950/20">
-                  <h3 className="text-lg font-black uppercase tracking-tighter italic flex items-center gap-2"><CalendarIcon className="text-blue-400 w-5 h-5"/> Log de la Temporada</h3>
+            <div className="bg-slate-900 border border-slate-800 rounded-[1.5rem] md:rounded-[2rem] shadow-xl overflow-hidden">
+               <div className="p-5 md:p-8 border-b border-slate-800 text-left bg-slate-950/20">
+                  <h3 className="text-base md:text-lg font-black uppercase tracking-tighter italic flex items-center gap-2"><CalendarIcon className="text-blue-400 w-5 h-5"/> Log de la Temporada</h3>
                </div>
-               <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar">
-                 <table className="w-full text-left whitespace-nowrap text-sm">
-                   <thead className="sticky top-0 z-10 bg-slate-900 shadow-md"><tr className="bg-slate-950 text-[10px] font-black text-slate-500 uppercase tracking-widest"><th className="px-8 py-4">Jornada</th><th className="px-8 py-4">Rival</th><th className="px-8 py-4 text-center">Rol</th><th className="px-8 py-4 text-center">Mins</th><th className="px-8 py-4 text-center">Gols</th><th className="px-8 py-4 text-center">Tarjetas</th></tr></thead>
+               <div className="overflow-x-auto custom-scrollbar">
+                 <table className="w-full text-left whitespace-nowrap text-xs md:text-sm">
+                   <thead className="sticky top-0 z-10 bg-slate-900 shadow-md"><tr className="bg-slate-950 text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest"><th className="px-5 md:px-8 py-3 md:py-4">Jornada</th><th className="px-5 md:px-8 py-3 md:py-4">Rival</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Rol</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Mins</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Gols</th><th className="px-5 md:px-8 py-3 md:py-4 text-center">Tarjetas</th></tr></thead>
                    <tbody className="divide-y divide-slate-800/40">
                      {logs.map((l, i) => (
                        <tr key={i} className="hover:bg-slate-800/30 transition-colors">
-                         <td className="px-8 py-5 text-xs font-black text-slate-500 italic">J{i+1}</td>
-                         <td className="px-8 py-5 font-bold text-slate-200">{l.Rival}</td>
-                         <td className="px-8 py-5 text-center"><span className={cn("text-[9px] font-black px-2 py-1 rounded-md uppercase", l.Titular === 'Sí' ? "bg-emerald-950/40 text-emerald-400" : "bg-orange-950/40 text-orange-400")}>{l.Titular === 'Sí' ? 'Titular' : 'Suplente'}</span></td>
-                         <td className="px-8 py-5 text-center font-black">{l["Minutos Jugados"] ?? 0}'</td>
-                         <td className="px-8 py-5 text-center">{ (l.Goles ?? 0) > 0 ? <span className="bg-emerald-500 text-emerald-950 px-2 py-0.5 rounded font-black text-xs">{l.Goles}</span> : '--'}</td>
-                         <td className="px-8 py-5 text-center"><div className="flex gap-1 justify-center">{(l.Amarillas ?? 0) > 0 && <div className="w-2 h-3 bg-yellow-400 rounded-sm"/>}{(l.Rojas ?? 0) > 0 && <div className="w-2 h-3 bg-red-500 rounded-sm"/>}{!(l.Amarillas ?? 0) && !(l.Rojas ?? 0) && '--'}</div></td>
+                         <td className="px-5 md:px-8 py-4 md:py-5 text-[10px] font-black text-slate-500 italic">J{i+1}</td>
+                         <td className="px-5 md:px-8 py-4 md:py-5 font-bold text-slate-200">{l.Rival}</td>
+                         <td className="px-5 md:px-8 py-4 md:py-5 text-center"><span className={cn("text-[8px] md:text-[9px] font-black px-1.5 md:px-2 py-0.5 md:py-1 rounded-md uppercase", l.Titular === 'Sí' ? "bg-emerald-950/40 text-emerald-400" : "bg-orange-950/40 text-orange-400")}>{l.Titular === 'Sí' ? 'Titular' : 'Suplente'}</span></td>
+                         <td className="px-5 md:px-8 py-4 md:py-5 text-center font-black">{l["Minutos Jugados"] ?? 0}'</td>
+                         <td className="px-5 md:px-8 py-4 md:py-5 text-center">{ (l.Goles ?? 0) > 0 ? <span className="bg-emerald-500 text-emerald-950 px-1.5 md:px-2 py-0.5 rounded font-black text-[10px] md:text-xs">{l.Goles}</span> : '--'}</td>
+                         <td className="px-5 md:px-8 py-4 md:py-5 text-center"><div className="flex gap-1 justify-center">{(l.Amarillas ?? 0) > 0 && <div className="w-1.5 md:w-2 h-2.5 md:h-3 bg-yellow-400 rounded-sm"/>}{(l.Rojas ?? 0) > 0 && <div className="w-1.5 md:w-2 h-2.5 md:h-3 bg-red-500 rounded-sm"/>}{!(l.Amarillas ?? 0) && !(l.Rojas ?? 0) && '--'}</div></td>
                        </tr>
                      ))}
                    </tbody>
@@ -407,7 +421,7 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
             </button>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                <div className="flex flex-col gap-4">
-                  <SearchableSelect options={sortedUserOptions} value={route.id1} onChange={(v:string) => navigateTo(`vs/${v}/${route.id2}`)} placeholder="Jugador 1..." icon={AwardIcon} />
+                  <SearchableSelect options={sortedUserOptions} value={route.id1} onChange={(v:string) => navigateTo(`vs/${v}/${route.id2}`)} placeholder="Jugador 1..." icon={UsersIcon} />
                   {p1 && <div className="bg-slate-900 border-t-8 border-emerald-500 p-8 rounded-3xl shadow-xl flex justify-between items-center animate-in slide-in-from-left-4"><h2 className="text-2xl md:text-3xl font-black uppercase italic tracking-tighter text-slate-100">{p1.name}</h2><span className="text-emerald-400 font-black text-2xl">#{p1.dorsal}</span></div>}
                </div>
                <div className="flex flex-col gap-4">
@@ -422,13 +436,17 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
                    <h3 className="text-2xl font-black uppercase tracking-tighter italic text-center lg:text-left">Análisis Enfrentado</h3>
                    <table className="w-full text-sm">
                       <tbody className="divide-y divide-slate-800">
-                        {[{ l: 'Eficiencia', v1: p1.efficiency.toFixed(2), v2: p2.efficiency.toFixed(2), w: p1.efficiency > p2.efficiency ? 1 : 2 }, { l: 'Titularidad', v1: `${p1.pTitularidad.toFixed(0)}%`, v2: `${p2.pTitularidad.toFixed(0)}%`, w: p1.pTitularidad > p2.pTitularidad ? 1 : 2 }, { l: 'Suplencias', v1: p1.vecesSuplente, v2: p2.vecesSuplente, w: p1.vecesSuplente > p2.vecesSuplente ? 1 : 2 }, { l: 'Tarjetas', v1: p1.amarillas + p1.rojas, v2: p2.amarillas + p2.rojas, w: (p1.amarillas + p1.rojas) < (p2.amarillas + p2.rojas) ? 1 : 2 }].map(row => (
+                        {[
+                          { l: 'Eficiencia', v1: (p1?.efficiency || 0).toFixed(2), v2: (p2?.efficiency || 0).toFixed(2), w: (p1?.efficiency || 0) > (p2?.efficiency || 0) ? 1 : 2 }, 
+                          { l: 'Titularidad', v1: `${(p1?.pTitularidad || 0).toFixed(0)}%`, v2: `${(p2?.pTitularidad || 0).toFixed(0)}%`, w: (p1?.pTitularidad || 0) > (p2?.pTitularidad || 0) ? 1 : 2 }, 
+                          { l: 'Sanciones', v1: (p1?.amarillas || 0) + (p1?.rojas || 0), v2: (p2?.amarillas || 0) + (p2?.rojas || 0), w: ((p1?.amarillas || 0) + (p1?.rojas || 0)) < ((p2?.amarillas || 0) + (p2?.rojas || 0)) ? 1 : 2 }
+                        ].map(row => (
                           <tr key={row.l} className="group"><td className={cn("py-4 font-black transition-all", row.w === 1 ? "text-emerald-400 text-lg" : "text-slate-600")}>{row.v1}</td><td className="py-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-500">{row.l}</td><td className={cn("py-4 text-right font-black transition-all", row.w === 2 ? "text-blue-400 text-lg" : "text-slate-600")}>{row.v2}</td></tr>
                         ))}
                       </tbody>
                    </table>
                 </div>
-                <div className="h-96 w-full"><ResponsiveContainer width="100%" height="100%"><RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}><PolarGrid stroke="#334155" /><PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: '900' }} /><Radar name={p1.name} dataKey="p1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} /><Radar name={p2.name} dataKey="p2" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} /></RadarChart></ResponsiveContainer></div>
+                <div className="h-96 w-full"><ResponsiveContainer width="100%" height="100%"><RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}><PolarGrid stroke="#334155" /><PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: '900' }} /><Radar name={p1?.name || ''} dataKey="p1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} /><Radar name={p2?.name || ''} dataKey="p2" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} /></RadarChart></ResponsiveContainer></div>
               </div>
             )}
           </div>
@@ -437,29 +455,29 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
 
       {/* MODAL DETALLE (Hall of Fame) */}
       {detailModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="bg-slate-900 border-2 border-slate-800 rounded-[3rem] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col scale-in-95">
-            <div className="p-10 border-b border-slate-800 bg-slate-900/50 flex justify-between items-start text-left">
-              <div className="flex flex-col gap-2">
-                <span className="bg-emerald-500 text-emerald-950 px-2 py-0.5 rounded text-[9px] font-black uppercase w-fit tracking-tighter">Ranking Oficial</span>
-                <h3 className="text-3xl font-black text-slate-100 uppercase tracking-tighter italic">{detailModal.title}</h3>
-                <p className="text-slate-500 text-xs font-bold">{detailModal.subtitle}</p>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 md:p-4 bg-slate-950/95 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="bg-slate-900 border-2 border-slate-800 rounded-[2rem] md:rounded-[3rem] w-[95%] md:w-full max-w-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col scale-in-95">
+            <div className="p-6 md:p-10 border-b border-slate-800 bg-slate-900/50 flex justify-between items-start text-left">
+              <div className="flex flex-col gap-1 md:gap-2">
+                <span className="bg-emerald-500 text-emerald-950 px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-black uppercase w-fit tracking-tighter">Ranking Oficial</span>
+                <h3 className="text-xl md:text-3xl font-black text-slate-100 uppercase tracking-tighter italic">{detailModal.title}</h3>
+                <p className="text-slate-500 text-[10px] md:text-xs font-bold">{detailModal.subtitle}</p>
               </div>
-              <button onClick={() => setDetailModal(null)} className="w-12 h-12 flex items-center justify-center rounded-[1rem] bg-slate-800 text-slate-400 hover:text-white transition-all hover:rotate-90">✕</button>
+              <button onClick={() => setDetailModal(null)} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-[1rem] bg-slate-800 text-slate-400 hover:text-white transition-all hover:rotate-90">✕</button>
             </div>
-            <div className="p-8 overflow-y-auto custom-scrollbar">
+            <div className="p-4 md:p-8 overflow-y-auto custom-scrollbar">
               <table className="w-full text-left">
-                <thead><tr className="text-[10px] font-black text-slate-600 uppercase tracking-widest border-b border-slate-800"><th className="pb-4 px-4">Pos</th><th className="pb-4 px-4">Jugador</th><th className="pb-4 px-4 text-right">Métrica</th></tr></thead>
+                <thead><tr className="text-[9px] md:text-[10px] font-black text-slate-600 uppercase tracking-widest border-b border-slate-800"><th className="pb-4 px-2 md:px-4">Pos</th><th className="pb-4 px-2 md:px-4">Jugador</th><th className="pb-4 px-2 md:px-4 text-right">Métrica</th></tr></thead>
                 <tbody className="divide-y divide-slate-800/50">
                   {detailModal.players.map((p:any, i:number) => {
                     let val = p[detailModal.metricKey];
                     if (detailModal.metricKey === 'efficiency' || detailModal.metricKey === 'subEfficiency') val = val.toFixed(2);
                     if (detailModal.metricKey === 'minutos') val = `${val}'`;
                     return (
-                      <tr key={p.name} onClick={() => { setDetailModal(null); navigateTo(`player/${p.name}`); }} className="hover:bg-emerald-500/5 transition-all group cursor-pointer text-sm">
-                        <td className="py-5 px-4 text-slate-500 font-bold italic">#{i+1}</td>
-                        <td className="py-5 px-4 font-black uppercase text-slate-200 group-hover:text-emerald-400 transition-colors">{p.name}</td>
-                        <td className="py-5 px-4 text-right font-black text-xl text-slate-100">{val}</td>
+                      <tr key={p.name} onClick={() => { setDetailModal(null); navigateTo(`player/${p.name}`); }} className="hover:bg-emerald-500/5 transition-all group cursor-pointer text-xs md:text-sm">
+                        <td className="py-4 md:py-5 px-2 md:px-4 text-slate-500 font-bold italic">#{i+1}</td>
+                        <td className="py-4 md:py-5 px-2 md:px-4 font-black uppercase text-slate-200 group-hover:text-emerald-400 transition-colors truncate max-w-[150px] md:max-w-none">{p.name}</td>
+                        <td className="py-4 md:py-5 px-2 md:px-4 text-right font-black text-lg md:text-xl text-slate-100">{val}</td>
                       </tr>
                     );
                   })}
