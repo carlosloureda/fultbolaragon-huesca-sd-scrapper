@@ -190,7 +190,7 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
               <span className="bg-emerald-500 text-emerald-950 px-1.5 py-0.5 rounded-[4px] text-[8px] md:text-[10px] font-black uppercase tracking-tighter">SDH</span>
               <h1 className="text-xl md:text-3xl font-black tracking-tighter uppercase italic leading-none">DATA<span className="text-emerald-400">CENTER</span></h1>
             </div>
-            <p className="text-slate-500 text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] mt-0.5">SCOUTING V6.3</p>
+            <p className="text-slate-500 text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] mt-0.5">SCOUTING <em>BETA</em></p>
           </div>
           <div className="md:hidden">
             <a 
