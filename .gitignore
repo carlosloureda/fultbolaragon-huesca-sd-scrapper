@@ -6,8 +6,8 @@ __pycache__/
 .env
 
 # Data files (root level - only dashboard/public/ version goes to git)
-futbolaragon_data.json
-futbolaragon_data.xlsx
+/futbolaragon_data.json
+/futbolaragon_data.xlsx
 
 # Debug artifacts
 debug_*.png
