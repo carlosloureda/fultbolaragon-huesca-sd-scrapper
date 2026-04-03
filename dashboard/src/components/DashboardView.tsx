@@ -1,7 +1,25 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import type { Dataset, PlayerAggregatedStats } from '../types';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTTooltip, ResponsiveContainer, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { Users, Activity, ChevronDown, ChevronUp, Swords, Search, LayoutGrid, List, Trophy, AlertTriangle } from 'lucide-react';
+import { 
+  Swords as SwordsIcon, 
+  Trophy as TrophyIcon, 
+  Activity as ActivityIcon, 
+  Users as UsersIcon, 
+  Search as SearchIcon, 
+  ChevronDown as ChevronDownIcon, 
+  Zap as ZapIcon,
+  ChevronLeft as ChevronLeftIcon,
+  TrendingUp as TrendingUpIcon,
+  CalendarIcon as CalendarIcon,
+  Award as AwardIcon,
+  ShieldAlert as ShieldAlertIcon,
+  X as XIcon,
+  Target as TargetIcon
+} from 'lucide-react';
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  Radar, RadarChart, PolarGrid, PolarAngleAxis
+} from 'recharts';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -9,51 +27,61 @@ function cn(...classes: (string | undefined | null | false)[]) {
   return twMerge(clsx(classes));
 }
 
-// Custom Searchable Select
-function SearchableSelect({ options, value, onChange, placeholder, icon: Icon }: any) {
+// 1. STABLE COMPONENTS (OUTSIDE MAIN RENDER)
+function SearchableSelect({ options, value, onChange, placeholder, icon: Icon, className }: any) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
-  
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const filtered = options.filter((o: any) => o.label.toLowerCase().includes(search.toLowerCase()));
   const selectedLabel = options.find((o: any) => o.value === value)?.label || placeholder;
 
+  // --- CLICK OUTSIDE LOGIC (V5.2) ---
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [containerRef]);
+
   return (
-    <div className="relative w-full">
+    <div className={cn("relative text-left", className)} ref={containerRef}>
       <div 
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-xl px-4 py-3 flex items-center justify-between cursor-pointer hover:border-slate-500 transition-colors"
+        className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-xl px-4 py-3 flex items-center justify-between cursor-pointer hover:border-slate-500 transition-colors shadow-lg"
       >
         <div className="flex items-center gap-2 truncate">
           {Icon && <Icon className="w-4 h-4 text-slate-400" />}
-          <span className="truncate">{selectedLabel}</span>
+          <span className="truncate font-bold text-sm tracking-tight">{selectedLabel}</span>
         </div>
-        <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform", isOpen && "rotate-180")} />
+        <ChevronDownIcon className={cn("w-4 h-4 text-slate-400 transition-transform duration-300", isOpen && "rotate-180")} />
       </div>
-      
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2">
-          <div className="p-2 border-b border-slate-700 flex items-center gap-2">
-            <Search className="w-4 h-4 text-slate-400 ml-2" />
+        <div className="absolute z-[100] w-full mt-2 bg-slate-800 border border-slate-700 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="p-3 border-b border-slate-700 flex items-center gap-2 bg-slate-900/50">
+            <SearchIcon className="w-4 h-4 text-slate-500 ml-2" />
             <input 
               autoFocus 
               type="text" 
-              className="w-full bg-transparent border-none text-sm text-slate-200 focus:outline-none focus:ring-0 p-1" 
+              className="w-full bg-transparent border-none text-sm text-slate-200 focus:outline-none p-1 font-bold" 
               placeholder="Buscar..." 
               value={search} 
               onChange={e => setSearch(e.target.value)} 
             />
           </div>
-          <div className="max-h-60 overflow-y-auto">
-            {filtered.map((o: any) => (
-              <div 
-                key={o.value} 
-                onClick={() => { onChange(o.value); setIsOpen(false); setSearch(''); }}
-                className={cn("px-4 py-2 cursor-pointer text-sm hover:bg-slate-700 text-slate-200 transition-colors", value === o.value && "bg-blue-900/50 text-blue-200")}
-              >
-                {o.label}
-              </div>
-            ))}
-            {filtered.length === 0 && <div className="p-4 text-center text-slate-500 text-sm">Sin resultados</div>}
+          <div className="max-h-64 overflow-y-auto custom-scrollbar">
+            {filtered.length === 0 ? (
+              <div className="px-4 py-6 text-center text-slate-500 text-xs font-black uppercase italic tracking-widest">Sin resultados</div>
+            ) : (
+              filtered.map((o: any) => (
+                <div key={o.value} onClick={() => { onChange(o.value); setIsOpen(false); setSearch(''); }} className={cn("px-4 py-3 cursor-pointer text-sm hover:bg-slate-700 text-slate-200 transition-colors border-b border-slate-700/30 last:border-0", value === o.value && "bg-emerald-900/50 text-emerald-200")}>
+                  {o.label}
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -61,438 +89,373 @@ function SearchableSelect({ options, value, onChange, placeholder, icon: Icon }:
   );
 }
 
-type SortConfig = { key: keyof PlayerAggregatedStats | 'goles' | 'asistencias' | 'posicion'; direction: 'asc' | 'desc' };
+const MIN_MINUTES_FOR_EFFICIENCY = 350;
 
 export default function DashboardView({ dataset, teamStats: initialTeamStats }: { dataset: Dataset, teamStats: PlayerAggregatedStats[] }) {
-  const [selectedPlayer, setSelectedPlayer] = useState<string>('TODO');
-  const [vsPlayer, setVsPlayer] = useState<string>('NONE');
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'minutos', direction: 'desc' });
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
-  const [cardsFilter, setCardsFilter] = useState<string>('ALL');
+  // --- NAVIGATION (HASH ROUTING) ---
+  const [currentHash, setCurrentHash] = useState(window.location.hash);
+  useEffect(() => {
+    const handleHash = () => setCurrentHash(window.location.hash);
+    window.addEventListener('popstate', handleHash);
+    return () => window.removeEventListener('popstate', handleHash);
+  }, []);
 
-  const { matches, players } = dataset;
+  const route = useMemo(() => {
+    const h = currentHash.replace('#', '');
+    if (h.startsWith('player/')) return { type: 'player', id: decodeURIComponent(h.replace('player/', '')) };
+    if (h.startsWith('vs/')) {
+      const parts = h.replace('vs/', '').split('/');
+      return { type: 'vs', id1: decodeURIComponent(parts[0]), id2: decodeURIComponent(parts[1] || 'NONE') };
+    }
+    return { type: 'home' };
+  }, [currentHash]);
 
-  // Final enriched stats from logs
+  const navigateTo = (path: string) => window.location.hash = path;
+  const goHome = () => window.location.hash = '';
+
+  // --- DATA ENRICHMENT ---
+  const { players } = dataset;
+  
   const enrichedTeamStats = useMemo(() => {
     return initialTeamStats.map(p => {
       const logs = players.filter(l => l.Jugador === p.name);
+      const totalGoles = logs.reduce((acc, log) => acc + (log.Goles ?? 0), 0);
+      const totalMins = logs.reduce((acc, log) => acc + (log["Minutos Jugados"] ?? 0), 0);
+      const subLogs = logs.filter(l => l.Titular === 'No');
+      const golesAsSub = subLogs.reduce((acc, log) => acc + (log.Goles ?? 0), 0);
+      const efficiency = totalMins > 0 ? (totalGoles / totalMins) * 80 : 0;
+      const subEfficiency = subLogs.length > 0 ? (golesAsSub / subLogs.length) : 0;
+
       return {
         ...p,
-        goles: logs.reduce((acc, log) => acc + (log.Goles || 0), 0),
-        amarillas: logs.reduce((acc, log) => acc + (log.Amarillas || 0), 0),
-        rojas: logs.reduce((acc, log) => acc + (log.Rojas || 0), 0),
-        asistencias: logs.reduce((acc, log) => acc + (log.Asistencias || 0), 0),
-        posicion: logs[0]?.["Posición"] || 'Por definir'
+        goles: totalGoles,
+        minutos: totalMins,
+        golesAsSub,
+        subEfficiency,
+        efficiency,
+        amarillas: logs.reduce((acc, log) => acc + (log.Amarillas ?? 0), 0),
+        rojas: logs.reduce((acc, log) => acc + (log.Rojas ?? 0), 0),
+        posicion: logs[0]?.["Posición"] || '--',
+        totalPartidos: logs.length,
+        titularidades: logs.filter(l => l.Titular === 'Sí').length,
+        pTitularidad: logs.length > 0 ? (logs.filter(l => l.Titular === 'Sí').length / logs.length) * 100 : 0
       };
     });
   }, [initialTeamStats, players]);
 
-  // Sorting logic
+  // --- GRID VIEW LOGIC ---
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig] = useState<{key:string, direction:'asc'|'desc'}>({ key: 'goles', direction: 'desc' });
+  const [detailModal, setDetailModal] = useState<any>(null);
+
   const teamStats = useMemo(() => {
-    const sorted = [...enrichedTeamStats];
-    sorted.sort((a, b) => {
+    let stats = [...enrichedTeamStats];
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      stats = stats.filter(p => p.name.toLowerCase().includes(term) || p.dorsal.toString().includes(term));
+    }
+    stats.sort((a: any, b: any) => {
       const aVal = a[sortConfig.key];
       const bVal = b[sortConfig.key];
       if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-    return sorted;
-  }, [enrichedTeamStats, sortConfig]);
+    return stats;
+  }, [enrichedTeamStats, sortConfig, searchTerm]);
 
-  const handleSort = (key: SortConfig['key']) => {
-    setSortConfig(current => ({
-      key,
-      direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc'
-    }));
-  };
+  const sortedUserOptions = useMemo(() => enrichedTeamStats.map(p => ({ value: p.name, label: `${p.name} (#${p.dorsal})` })).sort((a,b)=>a.label.localeCompare(b.label)), [enrichedTeamStats]);
 
-  const SortIcon = ({ columnKey }: { columnKey: SortConfig['key'] }) => {
-    if (sortConfig.key !== columnKey) return <ChevronDown className="w-4 h-4 text-slate-600 inline" />;
-    return sortConfig.direction === 'asc' ? <ChevronUp className="w-4 h-4 text-blue-400 inline" /> : <ChevronDown className="w-4 h-4 text-blue-400 inline" />;
-  };
-
-  const teamAverageMins = useMemo(() => {
-    if (teamStats.length === 0) return 0;
-    return teamStats.reduce((acc, curr) => acc + curr.minutos, 0) / teamStats.length;
-  }, [teamStats]);
-
-  const playerFocus = useMemo(() => teamStats.find(p => p.name === selectedPlayer) || null, [selectedPlayer, teamStats]);
-  const playerVs = useMemo(() => teamStats.find(p => p.name === vsPlayer) || null, [vsPlayer, teamStats]);
-
-  const parsedMatches = useMemo(() => {
-    return matches.map(m => {
-      const title = m["Jornada/Fecha"] || "";
-      const jMatch = title.match(/Jornada (\d+)/i);
-      const jNumber = jMatch ? parseInt(jMatch[1], 10) : 0;
-      return { ...m, jNumber, label: `J${jNumber}: ${m.Rival}` };
-    }).sort((a, b) => a.jNumber - b.jNumber);
-  }, [matches]);
-
-  const radarData = useMemo(() => {
-    if (!playerFocus) return [];
-    const maxMins = Math.max(...teamStats.map(p => p.minutos), 1);
-    const maxTits = Math.max(...teamStats.map(p => p.titularidades), 1);
-    const maxGols = Math.max(...teamStats.map(p => p.goles), 1);
-    const maxAsts = Math.max(...teamStats.map(p => p.asistencias), 1);
-
-    const tAvgMins = teamStats.reduce((a,b)=>a+b.minutos,0)/teamStats.length;
-    const tAvgTits = teamStats.reduce((a,b)=>a+b.titularidades,0)/teamStats.length;
-    const tAvgGols = teamStats.reduce((a,b)=>a+b.goles,0)/teamStats.length;
-    const tAvgAsts = teamStats.reduce((a,b)=>a+b.asistencias,0)/teamStats.length;
-
-    return [
-      { subject: 'Minutos', A: Math.round((playerFocus.minutos/maxMins)*100), B: Math.round((tAvgMins/maxMins)*100) },
-      { subject: 'Titularidad', A: Math.round((playerFocus.titularidades/maxTits)*100), B: Math.round((tAvgTits/maxTits)*100) },
-      { subject: 'Goles', A: Math.round((playerFocus.goles/maxGols)*100), B: Math.round((tAvgGols/maxGols)*100) },
-      { subject: 'Asistencias', A: Math.round((playerFocus.asistencias/maxAsts)*100), B: Math.round((tAvgAsts/maxAsts)*100) },
-      { subject: 'Confianza', A: Math.round((playerFocus.partidosJugados/Math.max(matches.length,1))*100), B: Math.round(((teamStats.reduce((a,b)=>a+b.partidosJugados,0)/teamStats.length)/matches.length)*100) },
-    ];
-  }, [playerFocus, teamStats, matches]);
-
-  const evolutionData = useMemo(() => {
-    return parsedMatches.map(match => {
-      const dataPoint: any = { matchName: match.label, jNumber: match.jNumber };
-      const matchLogs = players.filter(p => p.Partido === match.Partido && p["Minutos Jugados"] > 0);
-      const avgMins = matchLogs.length > 0 ? matchLogs.reduce((acc, curr) => acc + curr["Minutos Jugados"], 0) / matchLogs.length : 0;
-      dataPoint.mediaEquipo = Math.round(avgMins);
-
-      if (playerFocus) {
-        const entry = matchLogs.find(p => p.Jugador === playerFocus.name);
-        dataPoint.minutosJugador1 = entry ? entry["Minutos Jugados"] : 0;
-      }
-      if (playerVs) {
-        const entry = matchLogs.find(p => p.Jugador === playerVs.name);
-        dataPoint.minutosJugador2 = entry ? entry["Minutos Jugados"] : 0;
-      }
-      return dataPoint;
-    });
-  }, [parsedMatches, players, playerFocus, playerVs]);
-
-  const sortedOptions = useMemo(() => {
-    return enrichedTeamStats
-      .map(p => ({ value: p.name, label: `${p.name} (${p.dorsal})` }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [enrichedTeamStats]);
-
-  const mainSelectOptions = [
-    { value: 'TODO', label: '🌐 Visión Global (Plantilla completa)' },
-    ...sortedOptions
-  ];
-
-  const vsSelectOptions = [
-    { value: 'NONE', label: 'Sin comparativa (Modo Foco)' },
-    ...sortedOptions.filter(o => o.value !== selectedPlayer)
-  ];
-
+  // --- RENDER MAIN ---
   return (
-    <div className="flex flex-col gap-8 p-4 md:p-8 max-w-7xl mx-auto">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-800/80 p-5 rounded-2xl border border-slate-700/50 shadow-xl backdrop-blur-md">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl lg:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-emerald-400 to-teal-400">
-            Huesca SD - TactiCenter
-          </h1>
-          <p className="text-slate-400 text-xs font-medium">Análisis Táctico y de Rotaciones Oficial</p>
+    <div className="flex flex-col gap-8 p-4 md:p-8 max-w-7xl mx-auto text-slate-100 font-sans relative">
+      {/* GLOBAL HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/80 backdrop-blur-md p-6 rounded-3xl border-l-[8px] border-emerald-500 shadow-2xl sticky top-4 z-[60]">
+        <div className="flex flex-col gap-1 text-left cursor-pointer" onClick={goHome}>
+          <div className="flex items-center gap-2">
+            <span className="bg-emerald-500 text-emerald-950 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter">SD Huesca Official</span>
+            <h1 className="text-3xl font-black tracking-tighter uppercase italic">DATA<span className="text-emerald-400">CENTER</span></h1>
+          </div>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mt-1">PRO SCOUTING APP V5.2</p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto z-50 relative">
+        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto z-50">
+          <a href="/futbolaragon_data.xlsx" download={`stats_huesca_${new Date().toISOString().split('T')[0]}.xlsx`} className="flex items-center justify-center gap-2 px-6 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-700/50 hover:border-emerald-500/30">
+            <AwardIcon className="w-4 h-4 text-emerald-400" /> Descargar Excel
+          </a>
           <div className="w-full sm:w-72">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 ml-1">Análisis Ppal.</label>
             <SearchableSelect 
-              options={mainSelectOptions}
-              value={selectedPlayer}
-              onChange={(val: string) => {
-                setSelectedPlayer(val);
-                if (val === 'TODO') setVsPlayer('NONE');
-              }}
-              placeholder="Buscar jugador..."
+              options={[{ value: 'TODO', label: '📊 VISTA GENERAL' }, ...sortedUserOptions]}
+              value={route.type === 'player' ? route.id : 'TODO'}
+              onChange={(val: string) => val === 'TODO' ? goHome() : navigateTo(`player/${val}`)}
+              placeholder="Ir a jugador..."
+              icon={UsersIcon}
             />
           </div>
-
-          {selectedPlayer !== 'TODO' && (
-            <div className="w-full sm:w-72 animate-in fade-in slide-in-from-left-4 z-40 relative">
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 ml-1 flex items-center gap-1">
-                Comparativa Paralela
-              </label>
-              <SearchableSelect 
-                options={vsSelectOptions}
-                value={vsPlayer}
-                onChange={setVsPlayer}
-                placeholder="Contra quién..."
-                icon={Swords}
-              />
-            </div>
-          )}
         </div>
       </div>
 
-      {/* MAIN CONTENT AREA */}
-      {selectedPlayer === 'TODO' ? (
-        <div className="flex flex-col gap-6">
-          {/* TEAM STREAK HIGHLIGHT */}
-          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-700/30 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Última Racha:</span>
-              <div className="flex gap-1.5">
-                {parsedMatches.slice(-10).map((m, i) => {
-                  const res = m.Result || 'Unknown';
-                  return (
-                    <div key={i} title={m.label} className={cn(
-                      "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shadow-lg transition-transform hover:scale-125 cursor-default",
-                      res === 'W' ? "bg-emerald-500 text-emerald-950" : 
-                      res === 'L' ? "bg-red-500 text-red-950" : 
-                      res === 'D' ? "bg-yellow-500 text-yellow-950" : "bg-slate-700 text-slate-400"
-                    )}>
-                      {res !== 'Unknown' ? res : '?'}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="hidden sm:flex gap-6 text-xs text-slate-400 font-semibold text-right">
-               <div><span className="text-slate-100 text-lg block">{teamStats.length}</span> PLANTILLA</div>
-               <div><span className="text-slate-100 text-lg block">{matches.length}</span> PARTIDOS</div>
-               <div><span className="text-slate-100 text-lg block">{Math.round(teamAverageMins)}'</span> MEDIA MINS</div>
-            </div>
-          </div>
-
-          {/* HALL OF FAME: LIDERAZGO */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Pichichi */}
-            {(() => {
-              const top = [...teamStats].sort((a,b) => b.goles - a.goles)[0];
-              return top ? (
-                <div className="bg-gradient-to-br from-yellow-500/10 to-slate-900 border border-yellow-500/20 p-5 rounded-2xl relative overflow-hidden group">
-                   <Trophy className="absolute -right-4 -bottom-4 w-24 h-24 text-yellow-500/10 group-hover:text-yellow-500/20 transition-all rotate-12" />
-                  <h3 className="text-yellow-500 text-[10px] font-bold uppercase tracking-widest mb-1">Pichichi del Equipo</h3>
-                  <div className="text-2xl font-black text-slate-100">{top.name}</div>
-                  <div className="text-3xl font-black text-yellow-500 mt-2">{top.goles} <span className="text-xs font-normal text-slate-500">GOLES</span></div>
-                </div>
-              ) : null;
-            })()}
-
-            {/* Iron Man */}
-            {(() => {
-              const top = [...teamStats].sort((a,b) => b.minutos - a.minutos)[0];
-              return top ? (
-                <div className="bg-gradient-to-br from-blue-500/10 to-slate-900 border border-blue-500/20 p-5 rounded-2xl relative overflow-hidden group">
-                  <Activity className="absolute -right-4 -bottom-4 w-24 h-24 text-blue-500/10 group-hover:text-blue-500/20 transition-all -rotate-12" />
-                  <h3 className="text-blue-500 text-[10px] font-bold uppercase tracking-widest mb-1">Iron Man (Minutos)</h3>
-                  <div className="text-2xl font-black text-slate-100">{top.name}</div>
-                  <div className="text-3xl font-black text-blue-500 mt-2">{top.minutos}' <span className="text-xs font-normal text-slate-500">MINS</span></div>
-                </div>
-              ) : null;
-            })()}
-
-            {/* El Letal */}
-            {(() => {
-              const lethals = teamStats.filter(p => p.minutos > 180).sort((a,b) => (b.goles / b.minutos) - (a.goles / a.minutos));
-              const top = lethals[0];
-              return top ? (
-                <div className="bg-gradient-to-br from-emerald-500/10 to-slate-900 border border-emerald-500/20 p-5 rounded-2xl relative overflow-hidden group">
-                  <Swords className="absolute -right-4 -bottom-4 w-24 h-24 text-emerald-500/10 group-hover:text-emerald-500/20 transition-all" />
-                  <h3 className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest mb-1">El Letal (Goles/90m)</h3>
-                  <div className="text-2xl font-black text-slate-100">{top.name}</div>
-                  <div className="text-3xl font-black text-emerald-400 mt-2">{((top.goles / top.minutos) * 90).toFixed(2)} <span className="text-xs font-normal text-slate-500">RATIO</span></div>
-                </div>
-              ) : null;
-            })()}
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Player Cards */}
-          {[playerFocus, playerVs].filter(Boolean).map((p, idx) => (
-            <div key={p!.name} className={cn(
-              "p-6 rounded-2xl border flex flex-col gap-4 shadow-2xl",
-              idx === 0 ? "bg-gradient-to-br from-blue-900/40 to-slate-900 border-blue-800/50" : "bg-gradient-to-br from-red-900/20 to-slate-900 border-red-800/30"
-            )}>
-              <div>
-                <h2 className={cn("text-2xl font-bold", idx === 0 ? "text-blue-100" : "text-red-100")}>{p!.name}</h2>
-                <span className={cn("text-sm font-medium tracking-widest uppercase", idx === 0 ? "text-blue-400" : "text-red-400")}>
-                  {p!.posicion} • Dorsal {p!.dorsal}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 text-center">
-                  <div className="text-2xl font-black text-slate-100">{p!.minutos}'</div>
-                  <div className="text-xs text-slate-400 mt-1 uppercase">Mins</div>
-                </div>
-                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 text-center">
-                  <div className="text-2xl font-black text-slate-100">{p!.titularidades}</div>
-                  <div className="text-xs text-slate-400 mt-1 uppercase">Titular</div>
-                </div>
-                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 text-center">
-                  <div className="text-2xl font-black text-emerald-400">{p!.goles}</div>
-                  <div className="text-xs text-slate-400 mt-1 uppercase">Goles</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* CHARTS LAYER */}
-      {!playerFocus ? (
-         <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 shadow-lg">
-           <h2 className="text-xl font-bold flex items-center gap-2 mb-6">
-              <Activity className="text-emerald-400" /> Tensión Táctica y Rotaciones
-           </h2>
-           <div className="h-[400px] w-full">
-             <ResponsiveContainer>
-               <LineChart data={evolutionData}>
-                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} vertical={false} />
-                 <XAxis dataKey="matchName" tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={20} />
-                 <YAxis tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} domain={[0, 95]} />
-                 <RTTooltip contentStyle={{ backgroundColor: '#0F172A', border: '1px solid #1E293B', borderRadius: '12px' }} />
-                 <Legend wrapperStyle={{ paddingTop: '20px' }}/>
-                 <Line type="monotone" dataKey="mediaEquipo" name="Media Mins. Equipo" stroke="#64748b" strokeWidth={3} dot={false} />
-               </LineChart>
-             </ResponsiveContainer>
-           </div>
-         </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-           <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 shadow-lg flex flex-col">
-             <h2 className="text-xl font-bold text-center mb-2">Perfil Base vs Equipo (Percentiles)</h2>
-             <div className="h-[300px] w-full">
-               <ResponsiveContainer>
-                 <RadarChart outerRadius={90} data={radarData}>
-                   <PolarGrid stroke="#334155" />
-                   <PolarAngleAxis dataKey="subject" tick={{ fill: '#94A3B8', fontSize: 12 }} />
-                   <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                   <Radar name={playerFocus.name} dataKey="A" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.5} />
-                   <Radar name="Media Equipo" dataKey="B" stroke="#64748B" fill="#64748B" fillOpacity={0.2} />
-                   <Legend />
-                   <RTTooltip contentStyle={{ backgroundColor: '#0F172A', border: '1px solid #1E293B', borderRadius: '12px' }} />
-                 </RadarChart>
-               </ResponsiveContainer>
-             </div>
-           </div>
-
-           <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 shadow-lg flex flex-col justify-center">
-             <h2 className="text-xl font-bold mb-4">Mosaico de Continuidad</h2>
-             <div className="flex flex-wrap gap-2 justify-center">
-               {evolutionData.map((d, i) => {
-                  let intensity = 'bg-slate-800 border-slate-700'; 
-                  const mins = d.minutosJugador1 || 0;
-                  if (mins > 75) intensity = 'bg-emerald-500 border-emerald-400';
-                  else if (mins > 45) intensity = 'bg-emerald-400/80 border-emerald-300/80';
-                  else if (mins > 15) intensity = 'bg-yellow-500 border-yellow-400';
-                  else if (mins > 0) intensity = 'bg-orange-500 border-orange-400';
-                  
-                  return (
-                    <div key={i} className="flex flex-col items-center group relative gap-1">
-                      <div className={cn("w-10 h-10 rounded-md border", intensity, "transition-all hover:scale-110")} />
-                      <span className="text-[10px] text-slate-500 absolute -bottom-5 w-24 text-center opacity-0 group-hover:opacity-100 bg-slate-900 px-1 py-0.5 rounded shadow z-10 transition-opacity">
-                        {d.matchName} <br/> {mins} mins
-                      </span>
-                    </div>
-                  )
-               })}
-             </div>
-             <div className="mt-8 flex items-center justify-center gap-4 text-xs font-medium text-slate-400">
-               <div className="flex items-center gap-1"><div className="w-3 h-3 bg-emerald-500 rounded-sm"></div> Titular Fijo</div>
-               <div className="flex items-center gap-1"><div className="w-3 h-3 bg-yellow-500 rounded-sm"></div> Revulsivo</div>
-               <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-800 border border-slate-700 rounded-sm"></div> Banquillo</div>
-             </div>
-           </div>
-        </div>
-      )}
-
-      {/* PLANTILLA VIEW */}
-      {selectedPlayer === "TODO" && (
-        <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 overflow-hidden shadow-lg flex flex-col gap-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Users className="text-blue-400" /> Plantilla General ({teamStats.length})
-            </h2>
-            
-            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700/50">
-              <button onClick={() => setViewMode('table')} className={cn("px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2", viewMode === 'table' ? "bg-slate-700 text-white shadow" : "text-slate-400 hover:text-slate-200")}>
-                <List className="w-4 h-4"/> Tabla
-              </button>
-              <button onClick={() => setViewMode('cards')} className={cn("px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2", viewMode === 'cards' ? "bg-slate-700 text-white shadow" : "text-slate-400 hover:text-slate-200")}>
-                <LayoutGrid className="w-4 h-4"/> Tarjetas
-              </button>
-            </div>
-          </div>
-          
-          {viewMode === 'table' ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left whitespace-nowrap">
-                <thead>
-                  <tr className="border-b border-slate-700 text-slate-400 uppercase text-xs tracking-wider">
-                    <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400" onClick={() => handleSort('dorsal')}>Dorsal <SortIcon columnKey="dorsal"/></th>
-                    <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400" onClick={() => handleSort('name')}>Jugador <SortIcon columnKey="name"/></th>
-                    <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400 text-right" onClick={() => handleSort('minutos')}>Minutos <SortIcon columnKey="minutos"/></th>
-                    <th className="pb-4 pt-2 font-bold cursor-pointer hover:text-blue-400 text-center" onClick={() => handleSort('goles')}>Goles <SortIcon columnKey="goles"/></th>
-                    <th className="pb-4 pt-2 font-bold text-center">Tarjetas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teamStats.map((p) => (
-                    <tr key={p.name} className="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors">
-                      <td className="py-4"><span className="w-8 h-8 flex items-center justify-center bg-slate-900 border border-slate-700 rounded-lg text-sm font-bold text-slate-300">{p.dorsal}</span></td>
-                      <td className="py-4 font-semibold text-slate-200">{p.name}</td>
-                      <td className="py-4 text-right font-bold text-blue-400 text-lg">{p.minutos}'</td>
-                      <td className="py-4 font-bold text-center text-emerald-400">{p.goles > 0 ? p.goles : '-'}</td>
-                      <td className="py-4 text-center">
-                         <div className="flex items-center justify-center gap-2">
-                           {p.amarillas > 0 && <div className="flex items-center gap-1"><div className="w-2 h-3 bg-yellow-500 rounded-[1px]"></div><span className="text-xs font-bold">{p.amarillas}</span></div>}
-                           {p.rojas > 0 && <div className="flex items-center gap-1"><div className="w-2 h-3 bg-red-500 rounded-[1px]"></div><span className="text-xs font-bold">{p.rojas}</span></div>}
-                         </div>
-                      </td>
-                    </tr>
+      {/* DYNAMIC VIEW ROUTING */}
+      {route.type === 'home' && (
+        <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4">
+           {/* Hall of Fame Widgets */}
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div onClick={() => setDetailModal({ title: 'Pichichi del Equipo', subtitle: 'Goles totales acumulados', players: [...enrichedTeamStats].sort((a,b)=>b.goles-a.goles).slice(0,15), metricKey: 'goles' })} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl hover:border-emerald-500/50 transition-all cursor-pointer shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500"/><div className="flex items-center gap-2 mb-4"><TrophyIcon className="w-4 h-4 text-emerald-400" /><h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Pichichi</h3></div>
+                <div className="space-y-3">
+                  {[...enrichedTeamStats].sort((a,b)=>b.goles-a.goles).slice(0,3).map((p,i)=>(
+                    <div key={p.name} className="flex justify-between text-xs font-bold text-slate-100 pr-2"><span>{i+1}. {p.name}</span><span className="font-black">{p.goles}</span></div>
                   ))}
+                </div>
+                <p className="mt-4 text-[9px] text-slate-600 font-bold uppercase text-right group-hover:text-emerald-400 transition-colors">Ranking completo →</p>
+              </div>
+              <div onClick={() => setDetailModal({ title: 'Efectividad Máxima', subtitle: 'Goles por 80 min (Mín. 350 min)', players: [...enrichedTeamStats].filter(p => p.minutos >= MIN_MINUTES_FOR_EFFICIENCY).sort((a,b)=>b.efficiency-a.efficiency).slice(0,15), metricKey: 'efficiency' })} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl hover:border-blue-500/50 transition-all cursor-pointer shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"/><div className="flex items-center gap-2 mb-4"><ZapIcon className="w-4 h-4 text-blue-400" /><h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Factor X</h3></div>
+                <div className="space-y-3">
+                  {[...enrichedTeamStats].filter(p => p.minutos >= MIN_MINUTES_FOR_EFFICIENCY).sort((a,b)=>b.efficiency-a.efficiency).slice(0,3).map((p,i)=>(
+                    <div key={p.name} className="flex justify-between text-xs font-bold text-slate-100 pr-2"><span>{i+1}. {p.name}</span><span className="font-black text-blue-400">{p.efficiency.toFixed(2)}</span></div>
+                  ))}
+                </div>
+                <p className="mt-4 text-[9px] text-slate-600 font-bold uppercase text-right group-hover:text-blue-400 transition-colors">Top Eficiencia →</p>
+              </div>
+              <div onClick={() => setDetailModal({ title: 'Impacto Revulsivo', subtitle: 'Goles por partido como suplente', players: [...enrichedTeamStats].filter(p=>(p.vecesSuplente||0)>0).sort((a,b)=>b.subEfficiency-a.subEfficiency).slice(0,15), metricKey: 'subEfficiency' })} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl hover:border-orange-500/50 transition-all cursor-pointer shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"/><div className="flex items-center gap-2 mb-4"><SwordsIcon className="w-4 h-4 text-orange-400" /><h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Suplente Oro</h3></div>
+                <div className="space-y-3">
+                  {[...enrichedTeamStats].filter(p=>(p.vecesSuplente||0)>0).sort((a,b)=>b.subEfficiency-a.subEfficiency).slice(0,3).map((p,i)=>(
+                    <div key={p.name} className="flex justify-between text-xs font-bold text-slate-100 pr-2"><span>{i+1}. {p.name}</span><span className="font-black text-orange-400">{p.subEfficiency.toFixed(2)}</span></div>
+                  ))}
+                </div>
+                <p className="mt-4 text-[9px] text-slate-600 font-bold uppercase text-right group-hover:text-orange-400 transition-colors">Ver Impacto →</p>
+              </div>
+              <div onClick={() => setDetailModal({ title: 'Los Intocables', subtitle: 'Minutos totales jugados', players: [...enrichedTeamStats].sort((a,b)=>b.minutos-a.minutos).slice(0,15), metricKey: 'minutos' })} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl hover:border-slate-500 transition-all cursor-pointer shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-full h-1 bg-slate-500"/><div className="flex items-center gap-2 mb-4"><ActivityIcon className="w-4 h-4 text-slate-400" /><h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Presencia</h3></div>
+                <div className="space-y-3">
+                  {[...enrichedTeamStats].sort((a,b)=>b.minutos-a.minutos).slice(0,3).map((p,i)=>(
+                    <div key={p.name} className="flex justify-between text-xs font-bold text-slate-100 pr-2"><span>{i+1}. {p.name}</span><span className="font-black">{p.minutos}'</span></div>
+                  ))}
+                </div>
+                <p className="mt-4 text-[9px] text-slate-600 font-bold uppercase text-right group-hover:text-slate-300 transition-colors">Season Log →</p>
+              </div>
+           </div>
+
+           <div className="bg-slate-800/20 p-6 rounded-3xl border border-slate-700/30 flex flex-col gap-6 shadow-2xl overflow-hidden backdrop-blur-sm">
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                <div className="flex flex-col gap-2 w-full lg:w-auto text-left">
+                  <h2 className="text-2xl font-black uppercase italic tracking-tighter flex items-center gap-2 text-slate-200">
+                    <UsersIcon className="text-emerald-400 w-6 h-6" /> Plantilla SD Huesca
+                  </h2>
+                  <div className="relative w-full lg:w-96 group">
+                    <SearchIcon className={cn("absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors", searchTerm ? "text-emerald-400" : "text-slate-500")} />
+                    <input type="text" placeholder="Filtrar por nombre o dorsal..." className="w-full bg-slate-950/50 border border-slate-700/50 rounded-xl pl-10 pr-12 py-3 text-sm focus:border-emerald-500 outline-none transition-all placeholder:text-slate-700 font-bold" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/>
+                    {searchTerm && (
+                      <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-800 rounded-full transition-colors animate-in fade-in scale-in-75">
+                        <XIcon className="w-4 h-4 text-slate-400" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 min-h-[400px]">
+                {teamStats.length === 0 ? (
+                  <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-500 bg-slate-900/50 rounded-[3rem] border border-dashed border-slate-700/50 animate-in fade-in zoom-in-95">
+                    <SearchIcon className="w-12 h-12 mb-4 opacity-20" />
+                    <p className="text-lg font-black uppercase tracking-tighter italic">No se han encontrado jugadores</p>
+                    <p className="text-xs font-bold uppercase tracking-widest mt-2 opacity-50">Prueba con otro nombre o dorsal</p>
+                    <button onClick={() => setSearchTerm('')} className="mt-6 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Limpiar Filtros</button>
+                  </div>
+                ) : (
+                  teamStats.map((p: any) => (
+                    <div key={p.name} onClick={() => navigateTo(`player/${p.name}`)} className="bg-slate-900/80 border border-slate-800 hover:border-emerald-500/50 cursor-pointer p-6 rounded-3xl transition-all shadow-xl active:scale-95 group text-left relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <span className="text-6xl font-black italic tracking-tighter text-slate-100">#{p.dorsal}</span>
+                      </div>
+                      <div className="mb-6 relative z-10">
+                        <h3 className="font-black text-slate-100 group-hover:text-emerald-400 transition-colors uppercase tracking-tight text-base truncate">{p.name}</h3>
+                        <div className="text-[10px] font-black tracking-[0.2em] text-slate-500 uppercase mt-1">{p.posicion}</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 relative z-10">
+                         <div className="bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 text-center"><span className="text-[10px] text-slate-600 uppercase font-black tracking-widest">MINS</span><div className="text-xl font-black text-slate-200">{p.minutos}'</div></div>
+                         <div className="bg-emerald-500/5 p-3 rounded-2xl border border-emerald-500/10 text-center"><span className="text-[10px] text-emerald-600 uppercase font-black tracking-widest">GOLS</span><div className="text-xl font-black text-emerald-400">{p.goles || '--'}</div></div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+           </div>
+        </div>
+      )}
+
+      {route.type === 'player' && (() => {
+        const stats = enrichedTeamStats.find(p => p.name === route.id);
+        const logs = players.filter(l => l.Jugador === route.id);
+        const chartData = logs.map((l, i) => ({ label: `J${i+1}`, mins: l["Minutos Jugados"] ?? 0, goles: l.Goles ?? 0 }));
+
+        if (!stats) return <div className="p-20 text-center text-slate-500 font-bold uppercase tracking-widest">Jugador no encontrado</div>;
+
+        return (
+          <div className="flex flex-col gap-8 animate-in slide-in-from-right-10 duration-500">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <button onClick={goHome} className="w-full sm:w-auto px-6 py-3 bg-slate-900 border border-slate-700 rounded-2xl text-slate-400 hover:text-slate-100 transition-all flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest">
+                <ChevronLeftIcon className="w-4 h-4" /> Volver
+              </button>
+              <div className="hidden sm:block flex-1 h-px bg-slate-800/50"/>
+              <button onClick={() => navigateTo(`vs/${route.id}/NONE`)} className="w-full sm:w-auto px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-emerald-950 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/20">COMPARAR (VS)</button>
+            </div>
+
+            <div className="bg-slate-900 border-l-[12px] border-emerald-500 p-8 md:p-12 rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-8 relative overflow-hidden">
+               <div className="absolute top-0 right-0 h-full w-1/2 bg-gradient-to-l from-emerald-500/5 to-transparent pointer-events-none"/>
+               <div className="flex flex-col gap-3 relative z-10 text-left">
+                 <div className="flex items-center gap-3"><span className="text-emerald-400 font-black text-4xl italic tracking-tighter">#{stats.dorsal}</span><span className="h-8 w-[2px] bg-slate-800"/><span className="text-slate-500 font-black uppercase text-sm tracking-[0.3em]">{stats.posicion}</span></div>
+                 <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter italic text-slate-100 leading-none">{stats.name}</h1>
+               </div>
+               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full md:w-auto relative z-10">
+                  {[
+                    { label: 'Goles', val: stats.goles, color: 'text-emerald-400', sub: 'Temporada' },
+                    { label: 'Minutos', val: `${stats.minutos}'`, color: 'text-white', sub: 'Presencia' },
+                    { label: 'Titular', val: `${stats.pTitularidad.toFixed(0)}%`, color: 'text-blue-400', sub: `${stats.titularidades} partidos` },
+                    { label: 'Efic.', val: stats.efficiency.toFixed(2), color: 'text-orange-400', sub: 'G / 80 min' }
+                  ].map(kpi => (
+                    <div key={kpi.label} className="bg-slate-950/40 p-5 rounded-3xl border border-slate-800/50 text-center min-w-[120px] backdrop-blur-md">
+                       <div className={cn("text-3xl font-black tracking-tighter", kpi.color)}>{kpi.val}</div>
+                       <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">{kpi.label}</div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 text-left">
+               <div className="lg:col-span-2 bg-slate-900 border border-slate-800 p-8 rounded-[2rem] shadow-xl flex flex-col gap-6">
+                  <h3 className="text-lg font-black uppercase tracking-tighter italic flex items-center gap-2"><TrendingUpIcon className="text-emerald-400 w-5 h-5"/> Curva de Rendimiento</h3>
+                  <div className="h-64 w-full mt-4 pr-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                        <XAxis dataKey="label" stroke="#475569" fontSize={10} fontWeight="900" axisLine={false} tickLine={false} />
+                        <YAxis stroke="#475569" fontSize={10} fontWeight="900" axisLine={false} tickLine={false} unit="'" />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', fontSize: '10px' }} />
+                        <Line type="monotone" dataKey="mins" stroke="#10b981" strokeWidth={4} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+               </div>
+               <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2rem] shadow-xl flex flex-col gap-6">
+                  <h3 className="text-lg font-black uppercase tracking-tighter italic flex items-center gap-2"><ShieldAlertIcon className="text-orange-400 w-5 h-5"/> Disciplina</h3>
+                  <div className="flex-1 flex flex-col justify-center gap-8">
+                    <div className="flex items-center gap-4">
+                       <div className="w-12 h-16 bg-yellow-400 rounded-lg flex items-center justify-center text-yellow-950 font-black text-2xl shadow-lg shadow-yellow-400/20">{stats.amarillas}</div>
+                       <div className="flex flex-col"><span className="text-sm font-black text-slate-200">Amarillas</span><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sanciones</span></div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                       <div className="w-12 h-16 bg-red-500 rounded-lg flex items-center justify-center text-red-950 font-black text-2xl shadow-lg shadow-red-500/20">{stats.rojas}</div>
+                       <div className="flex flex-col"><span className="text-sm font-black text-slate-200">Rojas</span><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Expulsiones</span></div>
+                    </div>
+                  </div>
+               </div>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-[2rem] shadow-xl overflow-hidden">
+               <div className="p-8 border-b border-slate-800 text-left bg-slate-950/20">
+                  <h3 className="text-lg font-black uppercase tracking-tighter italic flex items-center gap-2"><CalendarIcon className="text-blue-400 w-5 h-5"/> Log de la Temporada</h3>
+               </div>
+               <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar">
+                 <table className="w-full text-left whitespace-nowrap text-sm">
+                   <thead className="sticky top-0 z-10 bg-slate-900 shadow-md"><tr className="bg-slate-950 text-[10px] font-black text-slate-500 uppercase tracking-widest"><th className="px-8 py-4">Jornada</th><th className="px-8 py-4">Rival</th><th className="px-8 py-4 text-center">Rol</th><th className="px-8 py-4 text-center">Mins</th><th className="px-8 py-4 text-center">Gols</th><th className="px-8 py-4 text-center">Tarjetas</th></tr></thead>
+                   <tbody className="divide-y divide-slate-800/40">
+                     {logs.map((l, i) => (
+                       <tr key={i} className="hover:bg-slate-800/30 transition-colors">
+                         <td className="px-8 py-5 text-xs font-black text-slate-500 italic">J{i+1}</td>
+                         <td className="px-8 py-5 font-bold text-slate-200">{l.Rival}</td>
+                         <td className="px-8 py-5 text-center"><span className={cn("text-[9px] font-black px-2 py-1 rounded-md uppercase", l.Titular === 'Sí' ? "bg-emerald-950/40 text-emerald-400" : "bg-orange-950/40 text-orange-400")}>{l.Titular === 'Sí' ? 'Titular' : 'Suplente'}</span></td>
+                         <td className="px-8 py-5 text-center font-black">{l["Minutos Jugados"] ?? 0}'</td>
+                         <td className="px-8 py-5 text-center">{ (l.Goles ?? 0) > 0 ? <span className="bg-emerald-500 text-emerald-950 px-2 py-0.5 rounded font-black text-xs">{l.Goles}</span> : '--'}</td>
+                         <td className="px-8 py-5 text-center"><div className="flex gap-1 justify-center">{(l.Amarillas ?? 0) > 0 && <div className="w-2 h-3 bg-yellow-400 rounded-sm"/>}{(l.Rojas ?? 0) > 0 && <div className="w-2 h-3 bg-red-500 rounded-sm"/>}{!(l.Amarillas ?? 0) && !(l.Rojas ?? 0) && '--'}</div></td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {route.type === 'vs' && (() => {
+        const p1 = enrichedTeamStats.find(p => p.name === route.id1);
+        const p2 = enrichedTeamStats.find(p => p.name === route.id2);
+        const radarData = (() => {
+          if (!p1 || !p2) return [];
+          const metrics = [{ name: 'Goles', k: 'goles', m: 5 }, { name: 'Efic.', k: 'efficiency', m: 20 }, { name: 'Mins', k: 'minutos', m: 0.05 }, { name: 'Titular', k: 'pTitularidad', m: 1 }, { name: 'Disciplina', k: 'amarillas', m: -10, b: 100 }];
+          return metrics.map(m => ({ subject: m.name, p1: Math.min(100, (p1 as any)[m.k] * m.m + (m.b || 0)), p2: Math.min(100, (p2 as any)[m.k] * m.m + (m.b || 0)) }));
+        })();
+
+        return (
+          <div className="flex flex-col gap-8 animate-in fade-in text-left">
+            <button onClick={() => p1 ? navigateTo(`player/${p1.name}`) : goHome()} className="w-fit px-6 py-3 bg-slate-900 border border-slate-700 rounded-2xl text-slate-400 hover:text-slate-100 transition-all flex items-center gap-2 font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95">
+              <ChevronLeftIcon className="w-4 h-4" /> {p1 ? `Volver a ${p1.name.split(',')[0]}` : 'Cancelar'}
+            </button>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+               <div className="flex flex-col gap-4">
+                  <SearchableSelect options={sortedUserOptions} value={route.id1} onChange={(v:string) => navigateTo(`vs/${v}/${route.id2}`)} placeholder="Jugador 1..." icon={AwardIcon} />
+                  {p1 && <div className="bg-slate-900 border-t-8 border-emerald-500 p-8 rounded-3xl shadow-xl flex justify-between items-center animate-in slide-in-from-left-4"><h2 className="text-2xl md:text-3xl font-black uppercase italic tracking-tighter text-slate-100">{p1.name}</h2><span className="text-emerald-400 font-black text-2xl">#{p1.dorsal}</span></div>}
+               </div>
+               <div className="flex flex-col gap-4">
+                  <SearchableSelect options={sortedUserOptions} value={route.id2 === 'NONE' ? '' : route.id2} onChange={(v:string) => navigateTo(`vs/${route.id1}/${v}`)} placeholder="Seleccionar Oponente..." icon={TargetIcon} />
+                  {p2 && <div className="bg-slate-900 border-t-8 border-blue-500 p-8 rounded-3xl shadow-xl flex justify-between items-center animate-in slide-in-from-right-4"><h2 className="text-2xl md:text-3xl font-black uppercase italic tracking-tighter text-slate-100">{p2.name}</h2><span className="text-blue-400 font-black text-2xl">#{p2.dorsal}</span></div>}
+                  {!p2 && <div className="flex-1 bg-slate-900/50 border border-dashed border-slate-700 rounded-3xl flex items-center justify-center p-20 text-slate-600 font-black tracking-widest italic animate-pulse">Elige rival</div>}
+               </div>
+            </div>
+            {p1 && p2 && (
+              <div className="bg-slate-900 border border-slate-800 p-8 rounded-[3rem] shadow-2xl grid grid-cols-1 lg:grid-cols-2 gap-12">
+                <div className="flex flex-col gap-8 justify-center">
+                   <h3 className="text-2xl font-black uppercase tracking-tighter italic text-center lg:text-left">Análisis Enfrentado</h3>
+                   <table className="w-full text-sm">
+                      <tbody className="divide-y divide-slate-800">
+                        {[{ l: 'Eficiencia', v1: p1.efficiency.toFixed(2), v2: p2.efficiency.toFixed(2), w: p1.efficiency > p2.efficiency ? 1 : 2 }, { l: 'Titularidad', v1: `${p1.pTitularidad.toFixed(0)}%`, v2: `${p2.pTitularidad.toFixed(0)}%`, w: p1.pTitularidad > p2.pTitularidad ? 1 : 2 }, { l: 'Suplencias', v1: p1.vecesSuplente, v2: p2.vecesSuplente, w: p1.vecesSuplente > p2.vecesSuplente ? 1 : 2 }, { l: 'Tarjetas', v1: p1.amarillas + p1.rojas, v2: p2.amarillas + p2.rojas, w: (p1.amarillas + p1.rojas) < (p2.amarillas + p2.rojas) ? 1 : 2 }].map(row => (
+                          <tr key={row.l} className="group"><td className={cn("py-4 font-black transition-all", row.w === 1 ? "text-emerald-400 text-lg" : "text-slate-600")}>{row.v1}</td><td className="py-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-500">{row.l}</td><td className={cn("py-4 text-right font-black transition-all", row.w === 2 ? "text-blue-400 text-lg" : "text-slate-600")}>{row.v2}</td></tr>
+                        ))}
+                      </tbody>
+                   </table>
+                </div>
+                <div className="h-96 w-full"><ResponsiveContainer width="100%" height="100%"><RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}><PolarGrid stroke="#334155" /><PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: '900' }} /><Radar name={p1.name} dataKey="p1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} /><Radar name={p2.name} dataKey="p2" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} /></RadarChart></ResponsiveContainer></div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* MODAL DETALLE (Hall of Fame) */}
+      {detailModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="bg-slate-900 border-2 border-slate-800 rounded-[3rem] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col scale-in-95">
+            <div className="p-10 border-b border-slate-800 bg-slate-900/50 flex justify-between items-start text-left">
+              <div className="flex flex-col gap-2">
+                <span className="bg-emerald-500 text-emerald-950 px-2 py-0.5 rounded text-[9px] font-black uppercase w-fit tracking-tighter">Ranking Oficial</span>
+                <h3 className="text-3xl font-black text-slate-100 uppercase tracking-tighter italic">{detailModal.title}</h3>
+                <p className="text-slate-500 text-xs font-bold">{detailModal.subtitle}</p>
+              </div>
+              <button onClick={() => setDetailModal(null)} className="w-12 h-12 flex items-center justify-center rounded-[1rem] bg-slate-800 text-slate-400 hover:text-white transition-all hover:rotate-90">✕</button>
+            </div>
+            <div className="p-8 overflow-y-auto custom-scrollbar">
+              <table className="w-full text-left">
+                <thead><tr className="text-[10px] font-black text-slate-600 uppercase tracking-widest border-b border-slate-800"><th className="pb-4 px-4">Pos</th><th className="pb-4 px-4">Jugador</th><th className="pb-4 px-4 text-right">Métrica</th></tr></thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {detailModal.players.map((p:any, i:number) => {
+                    let val = p[detailModal.metricKey];
+                    if (detailModal.metricKey === 'efficiency' || detailModal.metricKey === 'subEfficiency') val = val.toFixed(2);
+                    if (detailModal.metricKey === 'minutos') val = `${val}'`;
+                    return (
+                      <tr key={p.name} onClick={() => { setDetailModal(null); navigateTo(`player/${p.name}`); }} className="hover:bg-emerald-500/5 transition-all group cursor-pointer text-sm">
+                        <td className="py-5 px-4 text-slate-500 font-bold italic">#{i+1}</td>
+                        <td className="py-5 px-4 font-black uppercase text-slate-200 group-hover:text-emerald-400 transition-colors">{p.name}</td>
+                        <td className="py-5 px-4 text-right font-black text-xl text-slate-100">{val}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                <button onClick={()=>setCardsFilter('ALL')} className={cn("px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap", cardsFilter==='ALL'?"bg-blue-600 text-white":"bg-slate-800 text-slate-400 hover:bg-slate-700")}>Todos</button>
-                {Array.from(new Set(teamStats.map(p=>p.posicion))).map(pos => (
-                  <button key={pos} onClick={()=>setCardsFilter(pos)} className={cn("px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap", cardsFilter===pos?"bg-blue-600 text-white":"bg-slate-800 text-slate-400 hover:bg-slate-700")}>{pos}</button>
-                ))}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                {teamStats.filter(p => cardsFilter === 'ALL' || p.posicion === cardsFilter).map(p => (
-                   <div key={p.name} onClick={() => setSelectedPlayer(p.name)} className="bg-slate-800/80 border border-slate-700 hover:border-blue-500/50 hover:bg-slate-800 cursor-pointer p-5 rounded-2xl transition-all flex flex-col gap-4 shadow-sm group">
-                     <div className="flex justify-between items-start">
-                       <div className="flex-1">
-                         <h3 className="font-bold text-slate-100 group-hover:text-blue-400 transition-colors leading-tight">{p.name}</h3>
-                         <div className="text-xs font-medium tracking-wider text-slate-500 uppercase mt-1">{p.posicion}</div>
-                       </div>
-                       <div className="text-2xl font-black text-slate-700 ml-2">#{p.dorsal}</div>
-                     </div>
-                      <div className="grid grid-cols-2 gap-2 mt-auto">
-                        <div className="bg-slate-900/50 p-2 rounded-lg text-center flex flex-col justify-center border border-slate-700/50">
-                          <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Minutos</span>
-                          <span className="text-lg font-black text-blue-400">{p.minutos}'</span>
-                        </div>
-                        <div className="bg-slate-900/50 p-2 rounded-lg text-center flex flex-col justify-center border border-slate-700/50">
-                          <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Goles</span>
-                          <span className="text-lg font-black text-emerald-400">{p.goles}</span>
-                        </div>
-                        <div className="bg-slate-900/50 p-2 rounded-lg text-center flex flex-row items-center justify-center gap-3 border border-slate-700/50 col-span-2">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-3 h-4 bg-yellow-500 rounded-[1px] shadow-[0_0_8px_rgba(234,179,8,0.5)]"></div>
-                            <span className="text-lg font-black text-slate-200">{p.amarillas}</span>
-                          </div>
-                          <div className="w-px h-4 bg-slate-700"></div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-3 h-4 bg-red-500 rounded-[1px] shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
-                            <span className="text-lg font-black text-slate-200">{p.rojas}</span>
-                          </div>
-                        </div>
-                      </div>
-                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
     </div>

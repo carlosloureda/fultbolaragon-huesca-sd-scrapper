@@ -2,7 +2,6 @@ import os
 import re
 import time
 import json
-import time
 import random
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -153,7 +152,9 @@ class FutbolAragonScraper:
         
         data = {
             'match_info': {},
-            'teams': {}
+            'teams': {},
+            '_all_cards': [],
+            '_all_goals': []
         }
         
         # Match Info
@@ -190,7 +191,10 @@ class FutbolAragonScraper:
                 if clean_score:
                     h_score = int(clean_score.group(1))
                     a_score = int(clean_score.group(2))
-                    is_home = target_team.lower() in home_team.lower()
+                    
+                    target_lower = target_team.lower()
+                    # More flexible match: check if target_team is PART of home_team
+                    is_home = target_lower in home_team.lower()
                     
                     my_score = h_score if is_home else a_score
                     rival_score = a_score if is_home else h_score
@@ -199,7 +203,8 @@ class FutbolAragonScraper:
                     elif my_score < rival_score: result = "L"
                     else: result = "D"
                     data['match_info']['result'] = result
-            except:
+            except Exception as e:
+                print(f"[DEBUG] Score parse error: {e}")
                 data['match_info']['result'] = "Unknown"
 
         # STRUCTURE-AWARE PARSER (v7)
@@ -227,8 +232,7 @@ class FutbolAragonScraper:
                             num_goals = max(1, len(re.findall(r"'", name_text)))
                             clean_name = re.sub(r'\(.*?\)', '', name_text).strip()
                             clean_name = re.sub(r'^\d+\-?\d*', '', clean_name).strip()
-                            # Store goals globally to match to team later
-                            data.setdefault('_all_goals', []).append({
+                            data['_all_goals'].append({
                                 'name': clean_name,
                                 'count': num_goals
                             })
@@ -265,33 +269,30 @@ class FutbolAragonScraper:
                                     data['teams'][team_name][current_section].append({'number': num, 'name': name, 'yellow_cards': 0, 'red_cards': 0})
                         
                         elif current_section == 'cards':
-                            # Parse yellow and red cards
-                            # Rows: [Color, Player Name/Info]
                             for row in child.find_all('tr'):
                                 cols = row.find_all('td')
                                 if len(cols) >= 2:
                                     card_info = cols[1].get_text(strip=True)
-                                    # Extract minute and player name
-                                    # Format is usually: "Player Name (Minute')"
-                                    clean_name = re.sub(r'\(.*?\)', '', card_info).strip()
-                                    is_yellow = 'amarilla' in str(cols[0]).lower() or 'yellow' in str(cols[0]).lower()
-                                    is_red = 'roja' in str(cols[0]).lower() or 'red' in str(cols[0]).lower()
+                                    # Extract name using regex (handling minutes like (80'))
+                                    name_match = re.search(r'^(.*?)\s*\((\d+)\'?\)', card_info)
+                                    clean_name = name_match.group(1).strip() if name_match else card_info.strip()
                                     
-                                    data.setdefault('_all_cards', []).append({
-                                        'name': clean_name,
-                                        'type': 'Y' if is_yellow else 'R'
-                                    })
+                                    img_tag = cols[0].find('img')
+                                    src = str(img_tag.get('src', '')).lower() if img_tag else ""
+                                    
+                                    card_type = None
+                                    if 'amarilla' in src or 'yellow' in src: card_type = 'Y'
+                                    elif 'roja' in src or 'red' in src or 'rojo' in src: card_type = 'R'
+                                    
+                                    if card_type:
+                                        print(f"  [DEBUG] Card found: {card_type} for {clean_name}")
+                                        data['_all_cards'].append({'name': clean_name, 'type': card_type})
                         
                         elif current_section == 'substitutions':
                             rows = child.find_all('tr')
-                            if len(rows) >= 1:
-                                # Each substitution is ONE table with 1 row (in) or structure varies
-                                # Row 0 = player IN, Row 1 = player OUT
-                                in_row = rows[0]
-                                out_row = rows[1] if len(rows) > 1 else rows[0]
-                                
-                                in_cols = in_row.find_all('td')
-                                out_cols = out_row.find_all('td')
+                            if len(rows) >= 2:
+                                in_row, out_row = rows[0], rows[1]
+                                in_cols, out_cols = in_row.find_all('td'), out_row.find_all('td')
                                 
                                 in_num = in_cols[0].get_text(strip=True) if in_cols else '0'
                                 out_num = out_cols[0].get_text(strip=True) if out_cols else '0'
@@ -309,7 +310,6 @@ class FutbolAragonScraper:
         # Now assign goals to the correct team using fuzzy word matching
         all_goals = data.get('_all_goals', [])
         if all_goals and data['teams']:
-            # Goals belong to whichever of the two teams the player is registered in
             for team_name, team_data_inner in data['teams'].items():
                 all_players = {p['name'] for p in team_data_inner['starters'] + team_data_inner['subs']}
                 for g in all_goals:
@@ -319,33 +319,33 @@ class FutbolAragonScraper:
                         if len(g_words.intersection(p_words)) >= 1:
                             team_data_inner['goals'].append(g)
                             break
-            # Clean up temp key
             del data['_all_goals']
             
         # Assign cards using fuzzy matching
         all_cards = data.get('_all_cards', [])
         if all_cards and data['teams']:
             for team_name, team_data_inner in data['teams'].items():
-                # Get all players for this team to search against
                 target_players_list = team_data_inner['starters'] + team_data_inner['subs']
                 for c in all_cards:
-                    c_words = set(c['name'].lower().replace(',', '').split())
+                    c_name_norm = c['name'].lower().replace(',', '').strip()
+                    c_words = set(c_name_norm.split())
+                    
                     for p in target_players_list:
-                        p_words = set(p['name'].lower().replace(',', '').split())
-                        if len(c_words.intersection(p_words)) >= 1:
+                        p_name_norm = p['name'].lower().replace(',', '').strip()
+                        p_words = set(p_name_norm.split())
+                        
+                        if c_name_norm == p_name_norm or c_words.issubset(p_words) or p_words.issubset(c_words):
                             if c['type'] == 'Y': p['yellow_cards'] = p.get('yellow_cards', 0) + 1
                             else: p['red_cards'] = p.get('red_cards', 0) + 1
+                            print(f"  [DEBUG] Assigned {c['type']} card to {p['name']}")
                             break
             del data['_all_cards']
         
-        # v7 parser complete - proceed to calculate stats
-
-        # Calculate minutes
+        # Proceed to calculate stats
         target_stats = self._calculate_player_stats(data, target_team, match_length)
         if not target_stats:
-            # Try to find exactly matching team name (case insensitive)
             for t_name in data['teams'].keys():
-                if target_team.lower() == t_name.lower() or t_name.lower().startswith(target_team.lower()):
+                if target_team.lower() in t_name.lower():
                     target_stats = self._calculate_player_stats(data, t_name, match_length)
                     break
                     
@@ -356,8 +356,7 @@ class FutbolAragonScraper:
         
     def _calculate_player_stats(self, parsed_data, target_team, match_length):
         team_data = parsed_data['teams'].get(target_team)
-        if not team_data:
-            return []
+        if not team_data: return []
 
         player_stats = {}
         for p in team_data['starters']:
@@ -384,13 +383,10 @@ class FutbolAragonScraper:
                 'red_cards': p.get('red_cards', 0)
             }
 
-        # Build a number->name index for faster lookup
         number_to_name = {stats['number']: name for name, stats in player_stats.items()}
 
         for sub in team_data['substitutions']:
             minute = sub.get('minute') or match_length
-            
-            # Player Out: look up by dorsal number
             out_name = number_to_name.get(sub.get('out_number', ''))
             out_p = player_stats.get(out_name) if out_name else None
             if out_p:
@@ -398,7 +394,6 @@ class FutbolAragonScraper:
                 if out_p['entry_minute'] is not None:
                     out_p['minutes_played'] = minute - out_p['entry_minute']
             
-            # Player In: look up by dorsal number
             in_name = number_to_name.get(sub.get('in_number', ''))
             in_p = player_stats.get(in_name) if in_name else None
             if in_p:
@@ -406,30 +401,23 @@ class FutbolAragonScraper:
                 in_p['exit_minute'] = match_length
                 in_p['minutes_played'] = match_length - minute
 
-        # Register goals strictly matched
         for g in team_data.get('goals', []):
             g_words = set(g['name'].lower().replace(',', '').split())
             if not g_words: continue
             
-            best_match = None
-            best_score = 0
-            
+            best_match, best_score = None, 0
             for p_name, stats in player_stats.items():
                 p_words = set(p_name.lower().replace(',', '').split())
                 score = len(g_words.intersection(p_words))
                 if score > best_score:
-                    best_score = score
-                    best_match = stats
+                    best_score, best_match = score, stats
             
             if best_match and best_score > 0:
                 best_match['goals'] += g['count']
 
         stats_list = []
         for name, stats in player_stats.items():
-            stats_list.append({
-                'name': name,
-                **stats
-            })
+            stats_list.append({'name': name, **stats})
         
         return sorted(stats_list, key=lambda x: (-x['minutes_played'], x['name']))
 
@@ -446,13 +434,11 @@ class ExcelExporter:
     def append_match_data(self, match_data):
         info = match_data['match_info']
         match_title = f"{info.get('home_team')} vs {info.get('away_team')}"
-        home = info.get('home_team', '')
-        away = info.get('away_team', '')
+        home, away = info.get('home_team', ''), info.get('away_team', '')
         
         condicion = "Local" if self.target_team.lower() in home.lower() else "Visitante"
         rival = away if condicion == "Local" else home
         
-        # Append match info
         self.matches_data.append({
             "Jornada/Fecha": info.get('subtitle', ''),
             "División": info.get('division', ''),
@@ -464,13 +450,9 @@ class ExcelExporter:
             "Result": info.get('result', '')
         })
         
-        # Append players
         for p in match_data.get('player_stats', []):
             titular = "Sí" if p['is_starter'] else "No"
             min_played = p['minutes_played']
-            min_in = p['entry_minute'] if p['entry_minute'] is not None else 0
-            min_out = p['exit_minute'] if p['exit_minute'] is not None else 0
-            
             self.players_data.append({
                 "Partido": match_title,
                 "Rival": rival,
@@ -478,8 +460,8 @@ class ExcelExporter:
                 "Jugador": p['name'],
                 "Dorsal": p['number'],
                 "Titular": titular,
-                "Min. Entrada": min_in,
-                "Min. Salida": min_out,
+                "Min. Entrada": p['entry_minute'] if p['entry_minute'] is not None else 0,
+                "Min. Salida": p['exit_minute'] if p['exit_minute'] is not None else 0,
                 "Minutos Jugados": min_played,
                 "Goles": p.get('goals', 0),
                 "Amarillas": p.get('yellow_cards', 0),
@@ -491,12 +473,9 @@ class ExcelExporter:
             
     def save(self):
         pd = self.pd
-        
-        df_matches = pd.DataFrame(self.matches_data)
-        df_players = pd.DataFrame(self.players_data)
+        df_matches, df_players = pd.DataFrame(self.matches_data), pd.DataFrame(self.players_data)
         
         df_resumen = pd.DataFrame()
-        # Resumen Plantilla
         if not df_players.empty:
             resumen = df_players.groupby("Jugador").agg(
                 Partidos_Convocado=("Partido", "count"),
@@ -513,160 +492,60 @@ class ExcelExporter:
             resumen = resumen.merge(suplencias_usado, on="Jugador", how="left").fillna({"Suplencias Usado": 0})
             resumen = resumen.merge(partidos_jugados, on="Jugador", how="left").fillna({"Partidos Jugados": 0})
             
-            resumen["Suplencias Usado"] = resumen["Suplencias Usado"].astype(int)
-            resumen["Partidos Jugados"] = resumen["Partidos Jugados"].astype(int)
-            resumen["Titularidades"] = resumen["Titularidades"].astype(int)
-            resumen["Amarillas"] = resumen["Amarillas"].astype(int)
-            resumen["Rojas"] = resumen["Rojas"].astype(int)
+            for col in ["Suplencias Usado", "Partidos Jugados", "Titularidades", "Amarillas", "Rojas"]:
+                resumen[col] = resumen[col].astype(int)
             
             resumen["Media Min/PJ"] = (resumen["Minutos_Totales"] / resumen.replace({'Partidos Jugados': {0: pd.NA}})["Partidos Jugados"]).fillna(0).round(1)
             resumen["% Titularidad"] = ((resumen["Titularidades"] / resumen.replace({'Partidos Jugados': {0: pd.NA}})["Partidos Jugados"]) * 100).fillna(0).round(1)
+            df_resumen = resumen.sort_values("Minutos_Totales", ascending=False)
             
-            # Sort by minutes played
-            resumen = resumen.sort_values("Minutos_Totales", ascending=False)
-            df_resumen = resumen
-            
-        # Target Player Sheet
-        df_target = pd.DataFrame()
-        if not df_players.empty and self.target_player:
-            player_matches = df_players[df_players["Jugador"].str.contains(self.target_player.split()[0], case=False, na=False)]
-            df_target = player_matches
-            
-        with pd.ExcelWriter(self.filename, engine='openpyxl') as writer:
-            if not df_matches.empty:
-                df_matches.to_excel(writer, sheet_name="Detalle Partidos", index=False)
-            if not df_players.empty:
-                df_players.to_excel(writer, sheet_name="Datos Jugadores", index=False)
-            if not df_resumen.empty:
-                df_resumen.to_excel(writer, sheet_name="Resumen Plantilla", index=False)
-            if not df_target.empty:
-                sheet_name = df_target.iloc[0]["Jugador"][:30] if not df_target.empty else "Jugador Objetivo"
-                df_target.to_excel(writer, sheet_name=sheet_name, index=False)
-                
-        # Add Auto-Filters and Column width using openpyxl directly on the saved file
-        from openpyxl import load_workbook
-        wb = load_workbook(self.filename)
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            for col in ws.columns:
-                max_length = 0
-                column = col[0].column_letter # Get the column name
-                for cell in col:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                ws.column_dimensions[column].width = adjusted_width
-            
-            if ws.dimensions:
-                ws.auto_filter.ref = ws.dimensions
-        
-        wb.save(self.filename)
-        
-        # Export logic for JSON (for Web Dashboard)
-        import json
-        json_filename = self.filename.replace(".xlsx", ".json")
-        
-        # Save JSON directly to the dashboard public directory so it updates React automatically
         json_path = "dashboard/public/futbolaragon_data.json"
-        
-        web_data = {
-            "matches": self.matches_data,
-            "players": self.players_data
-        }
-        
-        # Make directories if they somehow don't exist
-        import os
         os.makedirs(os.path.dirname(json_path), exist_ok=True)
-        
         with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(web_data, f, ensure_ascii=False, indent=2)
+            json.dump({"matches": self.matches_data, "players": self.players_data}, f, ensure_ascii=False, indent=2)
             
         print(f"[SUCCESS] Web dashboard data exported to {json_path}")
+        
+        with pd.ExcelWriter(self.filename, engine='openpyxl') as writer:
+            if not df_matches.empty: df_matches.to_excel(writer, sheet_name="Detalle Partidos", index=False)
+            if not df_players.empty: df_players.to_excel(writer, sheet_name="Datos Jugadores", index=False)
+            if not df_resumen.empty: df_resumen.to_excel(writer, sheet_name="Resumen Plantilla", index=False)
+        
+        from openpyxl import load_workbook
+        wb = load_workbook(self.filename)
+        for ws in wb.worksheets:
+            for col in ws.columns:
+                max_length = max((len(str(cell.value)) for cell in col), default=0)
+                ws.column_dimensions[col[0].column_letter].width = max_length + 2
+            if ws.dimensions: ws.auto_filter.ref = ws.dimensions
+        wb.save(self.filename)
 
 def main():
-    # Setup params
-    TARGET_TEAM = "HUESCA-S.D."
-    COD_COMPETICION = "22320178"
-    COD_GRUPO = "22401727"
-    # JORNADAS is discovered dynamically now
-    
-    scraper = FutbolAragonScraper(headless=False)
-    exporter = ExcelExporter(filename="futbolaragon_data.xlsx", target_team=TARGET_TEAM, target_player="LOUREDA")
+    TARGET_TEAM, COD_COMPETICION, COD_GRUPO = "HUESCA-S.D.", "22320178", "22401727"
+    scraper = FutbolAragonScraper(headless=True)
+    exporter = ExcelExporter(filename="futbolaragon_data.xlsx", target_team=TARGET_TEAM)
     
     try:
         scraper.setup_browser()
         scraper.handle_cookie_consent()
+        total_jornadas = scraper.get_total_jornadas(COD_COMPETICION, COD_GRUPO) or 1
+        match_urls = scraper.extract_matches_from_competition(COD_COMPETICION, COD_GRUPO, total_jornadas, TARGET_TEAM)
         
-        # Dynamically discover the total number of jornadas in the competition
-        total_jornadas = scraper.get_total_jornadas(
-            cod_competicion=COD_COMPETICION,
-            cod_grupo=COD_GRUPO
-        )
-        
-        if total_jornadas == 0:
-            print("[ERROR] Could not parse the total number of jornadas. Defaulting to 1 for safety.")
-            total_jornadas = 1
-            
-        # Extract URLs only for the target team
-        print(f"[INFO] Extracting match URLs for {TARGET_TEAM} across {total_jornadas} jornadas...")
-        match_urls = scraper.extract_matches_from_competition(
-            cod_competicion=COD_COMPETICION, 
-            cod_grupo=COD_GRUPO, 
-            jornadas=total_jornadas,
-            target_team=TARGET_TEAM
-        )
-        
-        total = len(match_urls)
-        print(f"[INFO] Total match URLs found for {TARGET_TEAM}: {total}")
-        
-        # Parse Matches
-        for i, match_obj in enumerate(match_urls, 1):
-            print(f"--- Processing match {i}/{total} ---")
-            
-            match_data = scraper.parse_match_report(match_obj, target_team=TARGET_TEAM)
-            
-            if match_data:
-                # To ensure it was a match that Huesca played
-                info = match_data['match_info']
-                home = info.get('home_team', '').lower()
-                away = info.get('away_team', '').lower()
-                target_lower = TARGET_TEAM.lower()
-                
-                # Check for exact match or startswith to avoid matching "HUESCA-S.D. ESCUELA DE FUTBOL" when looking for "HUESCA-S.D."
-                is_home = (home == target_lower or home.startswith(f"{target_lower} "))
-                is_away = (away == target_lower or away.startswith(f"{target_lower} "))
-                
-                if is_home or is_away:
-                    exporter.append_match_data(match_data)
-                else:
-                    print(f"Skipped: {TARGET_TEAM} did not play this match.")
-            else:
-                print(f"Failed to extract match {i}")
-            
-            # Anti-scraping delay between matches
-            if i < total:
-                wait_time = random.uniform(1.5, 3.5)
-                print(f"Sleeping for {wait_time:.1f}s to avoid rate limiting...")
-                time.sleep(wait_time)
+        for i, m_obj in enumerate(match_urls, 1):
+            print(f"--- Processing match {i}/{len(match_urls)} ---")
+            m_data = scraper.parse_match_report(m_obj, TARGET_TEAM)
+            if m_data: exporter.append_match_data(m_data)
+            if i < len(match_urls): time.sleep(random.uniform(1.5, 3.5))
             
         exporter.save()
-        
-        # Auto-push updated data to GitHub → triggers Vercel auto-deploy
         print("\n[GIT] Pushing updated data to GitHub...")
         import subprocess
         try:
             subprocess.run(["git", "add", "dashboard/public/futbolaragon_data.json"], check=True)
             subprocess.run(["git", "commit", "-m", "chore: update match data [scraper]"], check=True)
             subprocess.run(["git", "push"], check=True)
-            print("[GIT] ✅ Data pushed. Vercel will auto-deploy in ~30s.")
-        except subprocess.CalledProcessError as e:
-            print(f"[GIT] ⚠️  Git push failed (maybe no changes or no remote): {e}")
-        
-    finally:
-        scraper.teardown_browser()
+            print("[GIT] ✅ Data pushed.")
+        except: pass
+    finally: scraper.teardown_browser()
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()
