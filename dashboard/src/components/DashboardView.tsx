@@ -110,6 +110,17 @@ export default function DashboardView({ dataset, teamStats: initialTeamStats }: 
     return { type: 'home' };
   }, [currentHash]);
 
+  // --- DYNAMIC TITLE (V5.3) ---
+  useEffect(() => {
+    if (route.type === 'player' && route.id) {
+      document.title = `${route.id.split(',')[0]} | SD HUESCA`;
+    } else if (route.type === 'vs') {
+      document.title = `Comparativa VS | SD HUESCA`;
+    } else {
+      document.title = `SD HUESCA | DATACENTER`;
+    }
+  }, [route]);
+
   const navigateTo = (path: string) => window.location.hash = path;
   const goHome = () => window.location.hash = '';
 
