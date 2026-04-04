@@ -57,12 +57,16 @@ class FutbolAragonScraper:
             soup = BeautifulSoup(html, 'html.parser')
             
             select_jornada = soup.find('select', id='jornada')
-            if not select_jornada:
+            if not select_jornada or not hasattr(select_jornada, 'find_all'):
                 return 0
                 
             options = select_jornada.find_all('option')
-            # Extract highest option value that is a digit and not 0
-            jornadas = [int(opt['value']) for opt in options if opt.get('value') and opt['value'].isdigit() and opt['value'] != '0']
+            # Extract highest option value that is a digit and not 0 (Fixed lints v0.7.0)
+            jornadas = []
+            for opt in options:
+                val = opt.get('value')
+                if val and str(val).isdigit() and str(val) != '0':
+                    jornadas.append(int(str(val)))
             
             if jornadas:
                 total = max(jornadas)
@@ -94,8 +98,11 @@ class FutbolAragonScraper:
                 
                 added = 0
                 for table in match_tables:
-                    text_content = table.get_text().lower()
-                    if target_team.lower() in text_content:
+                    # IMPROVED V0.6.6: Exact team name matching to avoid overlap (e.g. HUESCA-S.D. vs HUESCA-S.D. ESCUELA)
+                    team_links = table.find_all('h4')
+                    team_names = [t.get_text(strip=True).upper() for t in team_links]
+                    
+                    if target_team.upper() in team_names:
                         acta_link = table.find('a', href=re.compile(r'NFG_CmpPartido.*CodActa='))
                         
                         # Extract exact Date and Time from the row text (e.g. "28-03-2026 \n 13:15")
@@ -136,6 +143,32 @@ class FutbolAragonScraper:
         # Sort chronically to guarantee match sequence in the output DB and Excel
         match_urls.sort(key=lambda x: x['jornada'])
         return match_urls
+
+    def get_official_roster(self, team_url):
+        """
+        Extracts the official squad list from the federation team page.
+        """
+        print(f"[INFO] Fetching official roster from: {team_url}")
+        try:
+            self.page.goto(team_url)
+            self.page.wait_for_selector("table", timeout=10000)
+            html = self.page.content()
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Players are typically in tables inside the 'plantilla' section
+            # We look for links to player profiles (NFG_VisJugador)
+            player_links = soup.find_all('a', href=re.compile(r'NFG_VisJugador'))
+            roster = set()
+            for link in player_links:
+                name = link.get_text(strip=True).upper()
+                if name:
+                    roster.add(name)
+            
+            print(f"[SUCCESS] Official roster extracted: {len(roster)} players found.")
+            return roster
+        except Exception as e:
+            print(f"[WARNING] Could not fetch official roster: {e}")
+            return set()
         
     def parse_match_report(self, match_obj, target_team, match_length=80):
         url = match_obj['url']
@@ -192,9 +225,9 @@ class FutbolAragonScraper:
                     h_score = int(clean_score.group(1))
                     a_score = int(clean_score.group(2))
                     
-                    target_lower = target_team.lower()
-                    # More flexible match: check if target_team is PART of home_team
-                    is_home = target_lower in home_team.lower()
+                    target_upper = target_team.upper()
+                    # IMPROVED V0.6.6: Strict name match for home/away teams
+                    is_home = (home_team.upper() == target_upper)
                     
                     my_score = h_score if is_home else a_score
                     rival_score = a_score if is_home else h_score
@@ -436,7 +469,8 @@ class ExcelExporter:
         match_title = f"{info.get('home_team')} vs {info.get('away_team')}"
         home, away = info.get('home_team', ''), info.get('away_team', '')
         
-        condicion = "Local" if self.target_team.lower() in home.lower() else "Visitante"
+        target_upper = self.target_team.upper()
+        condicion = "Local" if home.upper() == target_upper else "Visitante"
         rival = away if condicion == "Local" else home
         
         self.matches_data.append({
@@ -521,20 +555,32 @@ class ExcelExporter:
         wb.save(self.filename)
 
 def main():
-    TARGET_TEAM, COD_COMPETICION, COD_GRUPO = "HUESCA-S.D.", "22320178", "22401727"
+    # TEAM CONFIG (V0.7.0)
+    TARGET_TEAM = "HUESCA-S.D."
+    COD_COMPETICION = "22320178"
+    COD_GRUPO = "22401727"
+    TEAM_ROSTER_URL = "https://www.futbolaragon.com/pnfg/NPcd/NFG_VisEquipos?cod_primaria=1000119&Codigo_Equipo=876"
+    
     scraper = FutbolAragonScraper(headless=True)
     exporter = ExcelExporter(filename="futbolaragon_data.xlsx", target_team=TARGET_TEAM)
     
     try:
         scraper.setup_browser()
         scraper.handle_cookie_consent()
+        
+        # 1. Verification Step: Get the master roster to filter/validate data
+        official_roster = scraper.get_official_roster(TEAM_ROSTER_URL)
+        
+        # 2. Get Matches
         total_jornadas = scraper.get_total_jornadas(COD_COMPETICION, COD_GRUPO) or 1
         match_urls = scraper.extract_matches_from_competition(COD_COMPETICION, COD_GRUPO, total_jornadas, TARGET_TEAM)
         
+        # 3. Parse Matches with strict filtering
         for i, m_obj in enumerate(match_urls, 1):
             print(f"--- Processing match {i}/{len(match_urls)} ---")
             m_data = scraper.parse_match_report(m_obj, TARGET_TEAM)
-            if m_data: exporter.append_match_data(m_data)
+            if m_data: 
+                exporter.append_match_data(m_data)
             if i < len(match_urls): time.sleep(random.uniform(1.5, 3.5))
             
         exporter.save()
